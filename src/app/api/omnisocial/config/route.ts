@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { parseOmniSocialInput, ConnectionType } from "@/lib/api/omnisocial-proxy";
 
 function maskApiKey(key: string) {
   if (key.length <= 4) return "****";
@@ -18,12 +19,14 @@ export async function GET(req: NextRequest) {
       connected: false,
       apiKeyMasked: null,
       lastSyncedAt: null,
+      connectionType: null,
+      mcpUrl: null,
     });
   }
 
   const { data: config } = await supabase
     .from("OmniSocialConfig")
-    .select("apiKeyEncrypted, status, lastSyncedAt")
+    .select("apiKeyEncrypted, status, lastSyncedAt, connectionType, mcpUrl")
     .eq("userId", user.id)
     .single();
 
@@ -33,6 +36,8 @@ export async function GET(req: NextRequest) {
       connected: false,
       apiKeyMasked: config ? maskApiKey(config.apiKeyEncrypted) : null,
       lastSyncedAt: config?.lastSyncedAt ?? null,
+      connectionType: config?.connectionType ?? null,
+      mcpUrl: config?.mcpUrl ?? null,
     });
   }
 
@@ -41,6 +46,8 @@ export async function GET(req: NextRequest) {
     connected: true,
     apiKeyMasked: maskApiKey(config.apiKeyEncrypted),
     lastSyncedAt: config.lastSyncedAt,
+    connectionType: config.connectionType,
+    mcpUrl: config.mcpUrl,
   });
 }
 
@@ -54,10 +61,14 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { apiKey } = await req.json();
-  if (!apiKey || typeof apiKey !== "string") {
-    return NextResponse.json({ error: "apiKey is required" }, { status: 400 });
+  const body = await req.json();
+  const rawInput = body.apiKey ?? body.input ?? "";
+  if (!rawInput || typeof rawInput !== "string") {
+    return NextResponse.json({ error: "API key or MCP URL is required" }, { status: 400 });
   }
+
+  const { apiKey, mcpUrl } = parseOmniSocialInput(rawInput);
+  const connectionType: ConnectionType = mcpUrl ? "mcp_url" : "api_key";
 
   const { data: existing } = await supabase
     .from("OmniSocialConfig")
@@ -65,11 +76,19 @@ export async function PUT(req: NextRequest) {
     .eq("userId", user.id)
     .single();
 
+  const upsertData = {
+    apiKeyEncrypted: apiKey,
+    connectionType,
+    mcpUrl,
+    status: "ACTIVE",
+    updatedAt: new Date().toISOString(),
+  };
+
   let result;
   if (existing) {
     const { data, error } = await supabase
       .from("OmniSocialConfig")
-      .update({ apiKeyEncrypted: apiKey, status: "ACTIVE", updatedAt: new Date().toISOString() })
+      .update(upsertData)
       .eq("userId", user.id)
       .select()
       .single();
@@ -81,8 +100,7 @@ export async function PUT(req: NextRequest) {
       .insert({
         id: crypto.randomUUID(),
         userId: user.id,
-        apiKeyEncrypted: apiKey,
-        status: "ACTIVE",
+        ...upsertData,
       })
       .select()
       .single();
@@ -95,6 +113,8 @@ export async function PUT(req: NextRequest) {
     connected: true,
     apiKeyMasked: maskApiKey(result.apiKeyEncrypted),
     lastSyncedAt: result.lastSyncedAt,
+    connectionType: result.connectionType,
+    mcpUrl: result.mcpUrl,
   });
 }
 

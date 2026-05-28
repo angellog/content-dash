@@ -27,6 +27,8 @@ model OmniSocialConfig {
   userId          String   @unique
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   apiKeyEncrypted String
+  connectionType  ConnectionType @default(api_key)
+  mcpUrl          String?
   lastSyncedAt    DateTime?
   status          OmniSocialStatus @default(UNCONFIGURED)
   createdAt       DateTime @default(now())
@@ -113,6 +115,11 @@ enum OmniSocialStatus {
   UNCONFIGURED
   ACTIVE
   INVALID
+}
+
+enum ConnectionType {
+  api_key
+  mcp_url
 }
 
 enum NFCColor {

@@ -2,6 +2,39 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { OMNISOCIAL_API_BASE } from "@/lib/omnisocial";
 
+export function parseOmniSocialInput(input: string): {
+  apiKey: string;
+  mcpUrl: string | null;
+} {
+  const trimmed = input.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const url = new URL(trimmed);
+      const keyFromParam =
+        url.searchParams.get("api_key") ??
+        url.searchParams.get("apiKey") ??
+        url.searchParams.get("key");
+      if (keyFromParam) {
+        return { apiKey: keyFromParam, mcpUrl: `${url.origin}${url.pathname}` };
+      }
+      const keyFromHash = url.hash.startsWith("#") ? url.hash.slice(1) : null;
+      if (keyFromHash && keyFromHash.length > 8) {
+        return { apiKey: keyFromHash, mcpUrl: `${url.origin}${url.pathname}` };
+      }
+      const pathKey = url.pathname.split("/").filter(Boolean).pop();
+      if (pathKey && pathKey.length > 8 && !pathKey.includes(".")) {
+        return { apiKey: pathKey, mcpUrl: url.origin };
+      }
+      return { apiKey: trimmed, mcpUrl: trimmed };
+    } catch {
+      return { apiKey: trimmed, mcpUrl: null };
+    }
+  }
+  return { apiKey: trimmed, mcpUrl: null };
+}
+
+export type ConnectionType = "api_key" | "mcp_url";
+
 export async function getOmniSocialApiKey(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -16,7 +49,7 @@ export async function getOmniSocialApiKey(req: NextRequest) {
 
   const { data: config, error } = await supabase
     .from("OmniSocialConfig")
-    .select("apiKeyEncrypted, status")
+    .select("apiKeyEncrypted, status, connectionType, mcpUrl")
     .eq("userId", user.id)
     .single();
 
@@ -29,7 +62,12 @@ export async function getOmniSocialApiKey(req: NextRequest) {
     };
   }
 
-  return { apiKey: config.apiKeyEncrypted, userId: user.id };
+  return {
+    apiKey: config.apiKeyEncrypted,
+    userId: user.id,
+    connectionType: (config.connectionType as ConnectionType) ?? "api_key",
+    mcpUrl: config.mcpUrl ?? null,
+  };
 }
 
 export async function proxyOmniSocial(
