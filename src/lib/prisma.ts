@@ -13,7 +13,12 @@ function createPrismaClient() {
     const adapter = new PrismaPg(pool);
     return new PrismaClient({ adapter });
   }
-  const pool = new pg.Pool({ connectionString });
+  const pool = new pg.Pool({
+    connectionString,
+    max: process.env.NODE_ENV === "production" ? 3 : 10,
+    idleTimeoutMillis: 20_000,
+    connectionTimeoutMillis: 10_000,
+  });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
 }
