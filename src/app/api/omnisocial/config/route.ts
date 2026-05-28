@@ -1,19 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
-
-async function getAuthenticatedUser(req: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user)
-    return {
-      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
-    };
-
-  return { userId: user.id };
-}
 
 function maskApiKey(key: string) {
   if (key.length <= 4) return "****";
@@ -21,47 +7,113 @@ function maskApiKey(key: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await getAuthenticatedUser(req);
-  if ("error" in auth) return auth.error;
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const config = await prisma.omniSocialConfig.findUnique({
-    where: { userId: auth.userId },
-  });
+  if (!user) {
+    return NextResponse.json({
+      status: "NOT_CONFIGURED",
+      connected: false,
+      apiKeyMasked: null,
+      lastSyncedAt: null,
+    });
+  }
 
-  if (!config)
-    return NextResponse.json({ status: "NOT_CONFIGURED", apiKeyMasked: null, lastSyncedAt: null });
+  const { data: config } = await supabase
+    .from("OmniSocialConfig")
+    .select("apiKeyEncrypted, status, lastSyncedAt")
+    .eq("userId", user.id)
+    .single();
+
+  if (!config || config.status !== "ACTIVE") {
+    return NextResponse.json({
+      status: config?.status ?? "NOT_CONFIGURED",
+      connected: false,
+      apiKeyMasked: config ? maskApiKey(config.apiKeyEncrypted) : null,
+      lastSyncedAt: config?.lastSyncedAt ?? null,
+    });
+  }
 
   return NextResponse.json({
     status: config.status,
+    connected: true,
     apiKeyMasked: maskApiKey(config.apiKeyEncrypted),
     lastSyncedAt: config.lastSyncedAt,
   });
 }
 
 export async function PUT(req: NextRequest) {
-  const auth = await getAuthenticatedUser(req);
-  if ("error" in auth) return auth.error;
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { apiKey } = await req.json();
-  if (!apiKey || typeof apiKey !== "string")
+  if (!apiKey || typeof apiKey !== "string") {
     return NextResponse.json({ error: "apiKey is required" }, { status: 400 });
+  }
 
-  const config = await prisma.omniSocialConfig.upsert({
-    where: { userId: auth.userId },
-    update: {
-      apiKeyEncrypted: apiKey,
-      status: "ACTIVE",
-    },
-    create: {
-      userId: auth.userId,
-      apiKeyEncrypted: apiKey,
-      status: "ACTIVE",
-    },
-  });
+  const { data: existing } = await supabase
+    .from("OmniSocialConfig")
+    .select("id")
+    .eq("userId", user.id)
+    .single();
+
+  let result;
+  if (existing) {
+    const { data, error } = await supabase
+      .from("OmniSocialConfig")
+      .update({ apiKeyEncrypted: apiKey, status: "ACTIVE", updatedAt: new Date().toISOString() })
+      .eq("userId", user.id)
+      .select()
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    result = data;
+  } else {
+    const { data, error } = await supabase
+      .from("OmniSocialConfig")
+      .insert({
+        id: crypto.randomUUID(),
+        userId: user.id,
+        apiKeyEncrypted: apiKey,
+        status: "ACTIVE",
+      })
+      .select()
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    result = data;
+  }
 
   return NextResponse.json({
-    status: config.status,
-    apiKeyMasked: maskApiKey(config.apiKeyEncrypted),
-    lastSyncedAt: config.lastSyncedAt,
+    status: result.status,
+    connected: true,
+    apiKeyMasked: maskApiKey(result.apiKeyEncrypted),
+    lastSyncedAt: result.lastSyncedAt,
   });
+}
+
+export async function DELETE(req: NextRequest) {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { error } = await supabase
+    .from("OmniSocialConfig")
+    .delete()
+    .eq("userId", user.id);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ status: "NOT_CONFIGURED", connected: false });
 }
