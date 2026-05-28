@@ -25,6 +25,8 @@ import {
   AlertCircle,
   Link as LinkIcon,
   ArrowLeftRight,
+  Cpu,
+  MessageSquare,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -86,6 +88,14 @@ export default function SettingsPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
 
+  const [llmProvider, setLlmProvider] = useState<string>("openai");
+  const [llmApiKey, setLlmApiKey] = useState("");
+  const [agentActive, setAgentActive] = useState(false);
+  const [twilioSid, setTwilioSid] = useState("");
+  const [twilioAuthToken, setTwilioAuthToken] = useState("");
+  const [twilioNumber, setTwilioNumber] = useState("");
+  const [savingAgent, setSavingAgent] = useState(false);
+
   useEffect(() => {
     async function load() {
       const supabase = createClient();
@@ -98,9 +108,10 @@ export default function SettingsPage() {
       }
 
       try {
-        const [configRes, accountsRes] = await Promise.all([
+        const [configRes, accountsRes, agentRes] = await Promise.all([
           fetch("/api/omnisocial/config"),
           fetch("/api/omnisocial/accounts"),
+          fetch("/api/agent/config"),
         ]);
 
         if (configRes.ok) {
@@ -110,6 +121,14 @@ export default function SettingsPage() {
         if (accountsRes.ok) {
           const data = await accountsRes.json();
           setAccounts(data.accounts ?? data.data ?? []);
+        }
+        if (agentRes.ok) {
+          const data = await agentRes.json();
+          setLlmProvider(data.llmProvider ?? "openai");
+          setAgentActive(data.isActive ?? false);
+          setTwilioSid(data.twilioAccountSid ?? "");
+          setTwilioAuthToken(data.twilioAuthTokenMasked ?? "");
+          setTwilioNumber(data.twilioWhatsappNumber ?? "");
         }
       } finally {
         setLoading(false);
@@ -188,6 +207,34 @@ export default function SettingsPage() {
       toast.error("Failed to disconnect.");
     } finally {
       setDisconnecting(false);
+    }
+  }
+
+  async function handleSaveAgent() {
+    setSavingAgent(true);
+    try {
+      const res = await fetch("/api/agent/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          llmProvider,
+          llmApiKey: llmApiKey || undefined,
+          twilioAccountSid: twilioSid || undefined,
+          twilioAuthToken: twilioAuthToken || undefined,
+          twilioWhatsappNumber: twilioNumber || undefined,
+          isActive: true,
+        }),
+      });
+      if (res.ok) {
+        toast.success("AI Agent configuration saved!");
+        setAgentActive(true);
+      } else {
+        toast.error("Failed to save agent configuration.");
+      }
+    } catch {
+      toast.error("Failed to save agent configuration.");
+    } finally {
+      setSavingAgent(false);
     }
   }
 
@@ -373,44 +420,102 @@ export default function SettingsPage() {
         <Card className="border-zinc-800 bg-zinc-900">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-zinc-100">
-              <Users className="h-5 w-5 text-zinc-400" />
-              Connected Accounts
+              <Cpu className="h-5 w-5 text-purple-400" />
+              AI Agent Configuration
+              {agentActive && <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] uppercase tracking-wider">Active</Badge>}
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            {!config.connected || accounts.length === 0 ? (
-              <p className="text-sm text-zinc-500">
-                {config.connected
-                  ? "Loading accounts..."
-                  : "Connect OmniSocial to see your accounts"}
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {accounts.map((account) => (
-                  <div key={account.platform}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-zinc-200">
-                          {account.platform}
-                        </p>
-                        <p className="text-xs text-zinc-500">{account.username}</p>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={
-                          account.status === "active"
-                            ? "border-emerald-600 text-emerald-400"
-                            : "border-zinc-600 text-zinc-500"
-                        }
-                      >
-                        {account.status}
-                      </Badge>
-                    </div>
-                    <Separator className="mt-3 bg-zinc-800" />
-                  </div>
-                ))}
+          <CardContent className="space-y-5">
+            <div className="space-y-2">
+              <Label className="text-zinc-300 text-sm">LLM Provider</Label>
+              <select
+                value={llmProvider}
+                onChange={(e) => setLlmProvider(e.target.value)}
+                className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="openai">OpenAI (GPT-4o)</option>
+                <option value="anthropic">Anthropic (Claude Sonnet)</option>
+                <option value="gemini">Google (Gemini 2.0 Flash)</option>
+              </select>
+              <p className="text-xs text-zinc-500">Choose your preferred AI model. You bring your own API key.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-zinc-300 text-sm">LLM API Key</Label>
+              <Input
+                type="password"
+                placeholder="sk-... / sk-ant-... / AIza..."
+                value={llmApiKey}
+                onChange={(e) => setLlmApiKey(e.target.value)}
+                className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
+              />
+              <p className="text-xs text-zinc-500">Encrypted at rest. Used to power the OpenClaw agent and WhatsApp commands.</p>
+            </div>
+
+            <Separator className="bg-zinc-800" />
+
+            <div className="flex items-center gap-2 mb-2">
+              <MessageSquare className="h-4 w-4 text-indigo-400" />
+              <span className="text-sm font-medium text-zinc-300">Twilio WhatsApp Integration</span>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="text-zinc-300 text-sm">Account SID</Label>
+                <Input
+                  type="text"
+                  placeholder="ACxxxxxxxxxxxx"
+                  value={twilioSid}
+                  onChange={(e) => setTwilioSid(e.target.value)}
+                  className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
+                />
               </div>
-            )}
+              <div className="space-y-2">
+                <Label className="text-zinc-300 text-sm">Auth Token</Label>
+                <Input
+                  type="password"
+                  placeholder="Your Twilio auth token"
+                  value={twilioAuthToken}
+                  onChange={(e) => setTwilioAuthToken(e.target.value)}
+                  className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-zinc-300 text-sm">WhatsApp Number</Label>
+              <Input
+                type="text"
+                placeholder="+1234567890"
+                value={twilioNumber}
+                onChange={(e) => setTwilioNumber(e.target.value)}
+                className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
+              />
+              <p className="text-xs text-zinc-500">Your Twilio WhatsApp Business number. Users text this to command the agent.</p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <Button
+                onClick={handleSaveAgent}
+                disabled={savingAgent}
+                className="bg-purple-600 hover:bg-purple-500 text-white"
+              >
+                {savingAgent ? "Saving..." : "Save Agent Config"}
+              </Button>
+              {agentActive && (
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    await fetch("/api/agent/config", { method: "DELETE" });
+                    setAgentActive(false);
+                    toast.success("Agent deactivated.");
+                  }}
+                  className="border-zinc-700 text-zinc-400 hover:text-red-400"
+                >
+                  Deactivate
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
 

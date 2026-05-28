@@ -88,27 +88,35 @@ export default function OpenClawAgent() {
     checkConnection();
   }, []);
 
-  // Log simulation after unlock
   useEffect(() => {
     if (!isUnlocked) return;
 
-    const timer = setInterval(() => {
-      const logTemplates: Omit<AgentLog, "timestamp">[] = [
-        { type: "info", message: "Scraping competitor pricing sheets for updates..." },
-        { type: "success", message: "Analyzed competitor BrandX post. Recommended trend: 'Sustainable packaging highlights'" },
-        { type: "info", message: "Measuring active status billboard views and conversion trends..." },
-        { type: "success", message: "Autopilot posted Scheduled Story: 'Check out our new smart NFC configurations!'" },
-        { type: "warning", message: "Rate limit threshold reached on Twitter API. Backing off for 120s..." },
-        { type: "info", message: "Refreshing OmniSocial integration status. Latency: 22ms." },
-      ];
+    async function fetchLogs() {
+      try {
+        const res = await fetch("/api/agent/logs?limit=10");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.logs && data.logs.length > 0) {
+            const mapped = data.logs.map((l: Record<string, unknown>) => {
+              const ts = l.createdAt ? new Date(l.createdAt as string) : new Date();
+              const timeStr = `${ts.getHours().toString().padStart(2, "0")}:${ts.getMinutes().toString().padStart(2, "0")}:${ts.getSeconds().toString().padStart(2, "0")}`;
+              const status = (l.status as string) ?? "completed";
+              const type = status === "failed" ? "warning" : "success";
+              const toolCalls = l.toolCalls as Record<string, unknown>[] | undefined;
+              const toolNames = toolCalls?.map((t) => t.name).join(", ") ?? "";
+              const message = toolNames
+                ? `Executed: ${toolNames} — ${(l.result as string)?.slice(0, 80) ?? "done"}`
+                : (l.intent as string) ?? "Agent idle";
+              return { timestamp: timeStr, type, message } as AgentLog;
+            });
+            setLogs(mapped);
+          }
+        }
+      } catch {}
+    }
 
-      const chosen = logTemplates[Math.floor(Math.random() * logTemplates.length)];
-      const now = new Date();
-      const timeStr = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
-      
-      setLogs((prev) => [...prev.slice(-8), { timestamp: timeStr, ...chosen }]);
-    }, 5000);
-
+    fetchLogs();
+    const timer = setInterval(fetchLogs, 10000);
     return () => clearInterval(timer);
   }, [isUnlocked]);
 
@@ -296,11 +304,52 @@ export default function OpenClawAgent() {
                 ))}
               </CardContent>
 
-              <CardFooter className="border-t border-zinc-800/60 p-4 flex justify-between text-xs text-zinc-500">
-                <span className="flex items-center gap-1.5">
-                  <Wifi className="size-3 text-emerald-400" /> Synchronized with OmniSocial Cloud
-                </span>
-                <span>Press Ctrl+C to abort processes.</span>
+              <CardFooter className="border-t border-zinc-800/60 p-4 space-y-3">
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const input = e.currentTarget.command.value as string;
+                    if (!input.trim()) return;
+                    const now = new Date();
+                    const ts = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+                    setLogs((prev) => [...prev, { timestamp: ts, type: "info" as const, message: `> ${input}` }]);
+                    e.currentTarget.command.value = "";
+                    try {
+                      const res = await fetch("/api/agent/execute", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ message: input, source: "web" }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        const rts = new Date();
+                        const rtsStr = `${rts.getHours().toString().padStart(2, "0")}:${rts.getMinutes().toString().padStart(2, "0")}:${rts.getSeconds().toString().padStart(2, "0")}`;
+                        setLogs((prev) => [...prev, { timestamp: rtsStr, type: "success" as const, message: data.response ?? "Done." }]);
+                        toast.success("Agent command executed!");
+                      } else {
+                        toast.error("Agent execution failed.");
+                      }
+                    } catch {
+                      toast.error("Agent request failed.");
+                    }
+                  }}
+                  className="flex w-full gap-2"
+                >
+                  <Input
+                    name="command"
+                    placeholder='Type a command... e.g. "Post an Instagram carousel about the Breaking News"'
+                    className="bg-zinc-950 border-zinc-800 text-zinc-200 font-mono text-xs placeholder:text-zinc-600"
+                  />
+                  <Button type="submit" size="sm" className="bg-purple-600 hover:bg-purple-500 text-white shrink-0">
+                    <Send className="size-3.5" />
+                  </Button>
+                </form>
+                <div className="flex justify-between text-xs text-zinc-500 w-full">
+                  <span className="flex items-center gap-1.5">
+                    <Wifi className="size-3 text-emerald-400" /> Synchronized with OmniSocial Cloud
+                  </span>
+                  <span>WhatsApp + Web commands active</span>
+                </div>
               </CardFooter>
             </Card>
 

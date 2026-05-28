@@ -16,10 +16,12 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  omnisocialConfig OmniSocialConfig?
+  omnisocialConfig  OmniSocialConfig?
   nfcCards          NFCCard[]
   competitors       CompetitorWatch[]
   whatsappCampaigns WhatsAppBillboardCampaign[]
+  agentConfig       AgentConfig?
+  agentLogs         AgentLog[]
 }
 
 model OmniSocialConfig {
@@ -47,10 +49,34 @@ model NFCCard {
   isActive        Boolean  @default(true)
   orderStatus     NFCOrderStatus @default(ORDERED)
   flwTransactionId String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
 
   tapEvents NFCTapEvent[]
+}
+
+model AgentConfig {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  llmProvider           String   @default("openai")
+  llmApiKeyEncrypted    String?
+  twilioAccountSid      String?
+  twilioAuthTokenEncrypted String?
+  twilioWhatsappNumber  String?
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model AgentLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source    String   @default("web")
+  intent    String?
+  toolCalls Json?
+  result    String?
+  status    String   @default("completed")
+  createdAt DateTime @default(now())
 }
 
 model NFCTapEvent {
