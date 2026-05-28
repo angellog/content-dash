@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import {
   Home,
-  Camera,
+  Share2,
   BarChart3,
   CalendarDays,
   Swords,
@@ -31,7 +31,7 @@ import {
 
 const navItems = [
   { label: "Dashboard", href: "/", icon: Home },
-  { label: "Instagram Manager", href: "/instagram", icon: Camera },
+  { label: "Social Manager", href: "/social-manager", icon: Share2 },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },
   { label: "Content Calendar", href: "/calendar", icon: CalendarDays },
   { label: "Competitors", href: "/competitors", icon: Swords },

@@ -204,21 +204,114 @@ export class OmniSocialError extends Error {
 // Singleton instance
 export const omnisocial = new OmniSocialClient();
 
-// Platform metadata
-export const PLATFORM_CONFIG: Record<
-  Platform,
-  { name: string; color: string; icon: string; charLimit: number }
-> = {
-  instagram: { name: "Instagram", color: "#E4405F", icon: "instagram", charLimit: 2200 },
-  facebook: { name: "Facebook", color: "#1877F2", icon: "facebook", charLimit: 63206 },
-  linkedin: { name: "LinkedIn", color: "#0A66C2", icon: "linkedin", charLimit: 3000 },
-  threads: { name: "Threads", color: "#000000", icon: "at-sign", charLimit: 500 },
-  tiktok: { name: "TikTok", color: "#000000", icon: "music", charLimit: 2200 },
-  youtube: { name: "YouTube", color: "#FF0000", icon: "youtube", charLimit: 5000 },
-  pinterest: { name: "Pinterest", color: "#BD081C", icon: "pin", charLimit: 500 },
-  bluesky: { name: "Bluesky", color: "#0085FF", icon: "cloud", charLimit: 300 },
-  mastodon: { name: "Mastodon", color: "#6364FF", icon: "hash", charLimit: 500 },
-  x: { name: "X (Twitter)", color: "#000000", icon: "twitter", charLimit: 280 },
+export interface PlatformFeatures {
+  stories: boolean;
+  reels: boolean;
+  carousel: boolean;
+  video: boolean;
+  linkPreviews: boolean;
+}
+
+export interface PlatformConfig {
+  name: string;
+  color: string;
+  charLimit: number;
+  postTypes: string[];
+  features: PlatformFeatures;
+  connected: boolean;
+  gradient: string;
+  order: number;
+}
+
+export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
+  instagram: {
+    name: "Instagram", color: "#E4405F", charLimit: 2200,
+    postTypes: ["Post", "Reel", "Story", "Carousel"],
+    features: { stories: true, reels: true, carousel: true, video: true, linkPreviews: false },
+    connected: true,
+    gradient: "from-pink-500 via-red-500 to-yellow-500",
+    order: 0,
+  },
+  facebook: {
+    name: "Facebook", color: "#1877F2", charLimit: 63206,
+    postTypes: ["Post", "Story", "Reel"],
+    features: { stories: true, reels: true, carousel: true, video: true, linkPreviews: true },
+    connected: true,
+    gradient: "from-blue-600 to-blue-500",
+    order: 1,
+  },
+  linkedin: {
+    name: "LinkedIn", color: "#0A66C2", charLimit: 3000,
+    postTypes: ["Post"],
+    features: { stories: false, reels: false, carousel: false, video: true, linkPreviews: true },
+    connected: true,
+    gradient: "from-blue-700 to-blue-600",
+    order: 2,
+  },
+  threads: {
+    name: "Threads", color: "#000000", charLimit: 500,
+    postTypes: ["Post", "Carousel"],
+    features: { stories: false, reels: false, carousel: true, video: true, linkPreviews: false },
+    connected: false,
+    gradient: "from-zinc-800 to-zinc-700",
+    order: 3,
+  },
+  tiktok: {
+    name: "TikTok", color: "#000000", charLimit: 2200,
+    postTypes: ["Video", "Reel"],
+    features: { stories: false, reels: true, carousel: false, video: true, linkPreviews: false },
+    connected: false,
+    gradient: "from-zinc-900 via-red-600 to-zinc-900",
+    order: 4,
+  },
+  youtube: {
+    name: "YouTube", color: "#FF0000", charLimit: 5000,
+    postTypes: ["Short"],
+    features: { stories: false, reels: false, carousel: false, video: true, linkPreviews: true },
+    connected: false,
+    gradient: "from-red-600 to-red-500",
+    order: 5,
+  },
+  pinterest: {
+    name: "Pinterest", color: "#BD081C", charLimit: 500,
+    postTypes: ["Pin"],
+    features: { stories: false, reels: false, carousel: false, video: true, linkPreviews: true },
+    connected: false,
+    gradient: "from-red-700 to-red-600",
+    order: 6,
+  },
+  bluesky: {
+    name: "Bluesky", color: "#0085FF", charLimit: 300,
+    postTypes: ["Post"],
+    features: { stories: false, reels: false, carousel: false, video: true, linkPreviews: false },
+    connected: false,
+    gradient: "from-sky-500 to-blue-500",
+    order: 7,
+  },
+  mastodon: {
+    name: "Mastodon", color: "#6364FF", charLimit: 500,
+    postTypes: ["Post"],
+    features: { stories: false, reels: false, carousel: false, video: true, linkPreviews: true },
+    connected: false,
+    gradient: "from-indigo-600 to-purple-600",
+    order: 8,
+  },
+  x: {
+    name: "X (Twitter)", color: "#1DA1F2", charLimit: 280,
+    postTypes: ["Post"],
+    features: { stories: false, reels: false, carousel: false, video: true, linkPreviews: true },
+    connected: false,
+    gradient: "from-sky-400 to-zinc-800",
+    order: 9,
+  },
 };
+
+export const PLATFORM_ORDER: Platform[] = Object.entries(PLATFORM_CONFIG)
+  .sort(([, a], [, b]) => a.order - b.order)
+  .map(([key]) => key as Platform);
+
+export const CONNECTED_PLATFORMS: Platform[] = PLATFORM_ORDER.filter(
+  (p) => PLATFORM_CONFIG[p].connected
+);
 
 export default OmniSocialClient;
