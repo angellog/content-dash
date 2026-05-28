@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -15,7 +15,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-import { TrendingUp, TrendingDown, Users, Eye, BarChart3, Heart } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, Eye, BarChart3, Heart, Wifi, WifiOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -168,10 +168,6 @@ const topPosts = [
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Custom tooltip components
-// ---------------------------------------------------------------------------
-
 function ChartTooltip({
   active,
   payload,
@@ -212,6 +208,22 @@ export default function AnalyticsPage() {
 
   const [startDate, setStartDate] = useState(thirtyDaysAgo);
   const [endDate, setEndDate] = useState(today);
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    async function fetchAnalytics() {
+      try {
+        const res = await fetch(`/api/omnisocial/analytics?start_date=${startDate}&end_date=${endDate}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.impressions || data.engagement_rate || data.followers) {
+            setIsLive(true);
+          }
+        }
+      } catch {}
+    }
+    fetchAnalytics();
+  }, [startDate, endDate]);
 
   const stats = [
     {
