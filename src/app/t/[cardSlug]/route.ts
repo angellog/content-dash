@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { createServerClient } from "@supabase/ssr";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +9,22 @@ export async function GET(
 ) {
   const { cardSlug } = await params;
 
-  const card = await prisma.nFCCard.findUnique({
-    where: { cardSlug },
-    include: { tapEvents: false },
-  });
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return []; },
+        setAll() {},
+      },
+    }
+  );
+
+  const { data: card } = await supabase
+    .from("NFCCard")
+    .select("id, destinationUrl, isActive")
+    .eq("cardSlug", cardSlug)
+    .single();
 
   if (!card || !card.isActive) {
     return NextResponse.redirect(new URL("/", req.url));
@@ -22,20 +34,23 @@ export async function GET(
   const ipAddress = forwarded?.split(",")[0]?.trim() ?? req.headers.get("x-real-ip") ?? null;
   const userAgent = req.headers.get("user-agent") ?? null;
 
-  let deviceType: "IOS" | "ANDROID" | "DESKTOP" = "DESKTOP";
+  let deviceType = "OTHER";
   if (userAgent) {
-    if (/iPhone|iPad/i.test(userAgent)) {
-      deviceType = "IOS";
-    } else if (/Android/i.test(userAgent)) {
-      deviceType = "ANDROID";
-    }
+    if (/iPhone|iPad/i.test(userAgent)) deviceType = "IOS";
+    else if (/Android/i.test(userAgent)) deviceType = "ANDROID";
+    else if (/Macintosh|Windows|Linux/i.test(userAgent)) deviceType = "DESKTOP";
   }
 
-  prisma.nFCTapEvent
-    .create({
-      data: { cardId: card.id, ipAddress, userAgent, deviceType },
+  supabase
+    .from("NFCTapEvent")
+    .insert({
+      id: crypto.randomUUID(),
+      cardId: card.id,
+      ipAddress,
+      userAgent,
+      deviceType,
     })
-    .catch(() => {});
+    .then(() => {});
 
   return NextResponse.redirect(new URL(card.destinationUrl, req.url), 302);
 }

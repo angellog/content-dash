@@ -400,7 +400,7 @@ export default function OpenClawAgent() {
 
                   <CardFooter className="border-t border-zinc-800 p-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-zinc-950/20">
                     <div className="flex items-center gap-2 text-xxs text-zinc-500">
-                      <CreditCard className="size-4 text-zinc-600" /> Secure checkout verified by Stripe.
+                      <CreditCard className="size-4 text-zinc-600" /> Secure checkout verified by Flutterwave.
                     </div>
                     <Button type="submit" className="w-full sm:w-auto bg-violet-600 hover:bg-violet-500 text-white">
                       Unlock Autonomous Autopilot
