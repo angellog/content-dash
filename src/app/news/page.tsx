@@ -17,6 +17,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import {
   Card,
   CardHeader,
@@ -232,15 +233,32 @@ export default function NewsPage() {
     }, 1200)
   }
 
-  const handleSendToPipeline = () => {
+  const handleSendToPipeline = async () => {
     setIsSending(true)
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/omnisocial/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: generatedDraft,
+          platforms: selectedPlatforms,
+        }),
+      })
+      if (res.ok) {
+        setIsSending(false)
+        setSendSuccess(true)
+        toast.success("Post sent to OmniSocial pipeline!")
+        setTimeout(() => {
+          setIsDialogOpen(false)
+        }, 1500)
+      } else {
+        setIsSending(false)
+        toast.error("Failed to send post. Check OmniSocial connection.")
+      }
+    } catch {
       setIsSending(false)
-      setSendSuccess(true)
-      setTimeout(() => {
-        setIsDialogOpen(false)
-      }, 1500)
-    }, 1800)
+      toast.error("Failed to send post. Check your network.")
+    }
   }
 
   const togglePlatform = (platform: string) => {

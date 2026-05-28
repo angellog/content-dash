@@ -49,6 +49,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface AgentLog {
   timestamp: string;
@@ -114,7 +115,7 @@ export default function OpenClawAgent() {
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!apiKey.trim()) {
-      alert("Please enter your OmniSocial API key to establish agent handshake.");
+      toast.error("Please enter your OmniSocial API key to establish agent handshake.");
       return;
     }
 
@@ -130,14 +131,15 @@ export default function OpenClawAgent() {
         });
         if (configRes.ok) {
           setIsUnlocked(true);
+          toast.success("OpenClaw agent unlocked — OmniSocial handshake established.");
         } else {
-          alert("Failed to save API key. Please try again.");
+          toast.error("Failed to save API key. Please try again.");
         }
       } else {
-        alert("Invalid API key. Check your OmniSocial dashboard.");
+        toast.error("Invalid API key. Check your OmniSocial dashboard.");
       }
     } catch {
-      alert("Connection failed. Check your network.");
+      toast.error("Connection failed. Check your network.");
     }
   };
 

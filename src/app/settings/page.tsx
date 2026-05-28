@@ -27,6 +27,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import Link from "next/link";
 
 type InputMode = "api_key" | "mcp_url";
@@ -162,9 +163,11 @@ export default function SettingsPage() {
         setConfig(data);
         setInputValue("");
         setAccounts(fetchedAccounts);
+        toast.success("OmniSocial connected successfully!");
       }
     } catch {
       setValidationStatus("invalid");
+      toast.error("Connection failed. Check your API key.");
     } finally {
       setConnecting(false);
     }
@@ -177,7 +180,12 @@ export default function SettingsPage() {
       if (res.ok) {
         setConfig({ connected: false, status: "NOT_CONFIGURED" });
         setAccounts([]);
+        toast.success("OmniSocial disconnected.");
+      } else {
+        toast.error("Failed to disconnect.");
       }
+    } catch {
+      toast.error("Failed to disconnect.");
     } finally {
       setDisconnecting(false);
     }

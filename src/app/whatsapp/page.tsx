@@ -50,6 +50,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 // Mock existing campaigns
 const initialCampaigns = [
@@ -151,7 +152,7 @@ export default function WhatsAppBillboard() {
         : newCampaignMediaUrl;
 
     try {
-      await fetch("/api/whatsapp/campaigns", {
+      const res = await fetch("/api/whatsapp/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -163,7 +164,14 @@ export default function WhatsAppBillboard() {
           status: "QUEUED",
         }),
       });
-    } catch {}
+      if (res.ok) {
+        toast.success("Campaign created and queued for publishing!");
+      } else {
+        toast.error("Failed to create campaign.");
+      }
+    } catch {
+      toast.error("Failed to create campaign.");
+    }
 
     const newCamp = {
       id: `camp-${Date.now()}`,

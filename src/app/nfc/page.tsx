@@ -46,6 +46,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export default function SmartNfcCards() {
   // Configuration Form State
@@ -123,8 +124,11 @@ export default function SmartNfcCards() {
           },
         ]);
         setIsLive(true);
+        toast.success("NFC card configuration saved successfully!");
       }
-    } catch {}
+    } catch {
+      toast.error("Failed to save NFC configuration.");
+    }
   };
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
@@ -142,8 +146,11 @@ export default function SmartNfcCards() {
           isActive: true,
         }),
       });
-    } catch {}
+    } catch {
+      toast.error("Failed to create NFC card order.");
+    }
     setCheckoutStep("success");
+    toast.success("NFC card order placed successfully!");
   };
 
   // Helper to determine active preview URL based on selections

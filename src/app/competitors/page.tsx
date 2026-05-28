@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import {
   Card,
   CardHeader,
@@ -550,8 +551,11 @@ export default function CompetitorTrackerPage() {
       if (res.ok) {
         const saved = await res.json();
         savedId = saved.id ?? String(Date.now());
+        toast.success(`Competitor "${newBrandName}" added successfully!`);
       }
-    } catch {}
+    } catch {
+      toast.error("Failed to save competitor to database.");
+    }
 
     const newComp: Competitor = {
       id: savedId,
@@ -622,7 +626,10 @@ export default function CompetitorTrackerPage() {
   const handleDeleteCompetitor = async (id: string) => {
     try {
       await fetch(`/api/competitors?id=${id}`, { method: "DELETE" });
-    } catch {}
+      toast.success("Competitor removed.");
+    } catch {
+      toast.error("Failed to remove competitor from database.");
+    }
     setCompetitors((prev) => prev.filter((c) => c.id !== id));
     if (selectedCompetitorId === id) {
       setSelectedCompetitorId(competitors.find((c) => c.id !== id)?.id ?? "");

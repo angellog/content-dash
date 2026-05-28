@@ -18,6 +18,7 @@ import {
 import { TrendingUp, TrendingDown, Users, Eye, BarChart3, Heart, Wifi, WifiOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -209,9 +210,11 @@ export default function AnalyticsPage() {
   const [startDate, setStartDate] = useState(thirtyDaysAgo);
   const [endDate, setEndDate] = useState(today);
   const [isLive, setIsLive] = useState(false);
+  const [isFetching, setIsFetching] = useState(true);
 
   useEffect(() => {
     async function fetchAnalytics() {
+      setIsFetching(true);
       try {
         const res = await fetch(`/api/omnisocial/analytics?start_date=${startDate}&end_date=${endDate}`);
         if (res.ok) {
@@ -220,7 +223,9 @@ export default function AnalyticsPage() {
             setIsLive(true);
           }
         }
-      } catch {}
+      } catch {} finally {
+        setIsFetching(false);
+      }
     }
     fetchAnalytics();
   }, [startDate, endDate]);
@@ -259,6 +264,8 @@ export default function AnalyticsPage() {
       icon: BarChart3,
     },
   ];
+
+  if (isFetching) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-4 py-8 text-zinc-100 sm:px-6 lg:px-8">
