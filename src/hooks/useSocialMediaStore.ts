@@ -2,6 +2,12 @@ import { create } from "zustand";
 import { Platform, Post, PostStatus } from "@/types/social";
 import { initialSocialPosts } from "@/lib/data/social";
 import { CONNECTED_PLATFORMS } from "@/lib/omnisocial";
+import {
+  fetchPostsFromApi,
+  createPostViaApi,
+  deletePostViaApi,
+  SyncState,
+} from "@/lib/api/social";
 
 type ViewMode = "status" | "platform";
 
@@ -9,6 +15,8 @@ interface SocialMediaStore {
   posts: Record<Platform, Post[]>;
   activePlatform: Platform | "all";
   viewMode: ViewMode;
+  syncState: SyncState;
+  isLoading: boolean;
 
   setActivePlatform: (platform: Platform | "all") => void;
   setViewMode: (mode: ViewMode) => void;
@@ -17,12 +25,16 @@ interface SocialMediaStore {
   deletePost: (platform: Platform, id: string) => void;
   getPostsByStatus: (platform: Platform | "all", status: PostStatus) => Post[];
   getAllPosts: () => Post[];
+  fetchPosts: (platform?: Platform | "all") => Promise<void>;
+  syncFromOmniSocial: () => Promise<void>;
 }
 
 export const useSocialMediaStore = create<SocialMediaStore>((set, get) => ({
   posts: initialSocialPosts,
   activePlatform: CONNECTED_PLATFORMS[0] || "instagram",
   viewMode: "status" as ViewMode,
+  syncState: { isLive: false, lastSyncedAt: null, error: null },
+  isLoading: false,
 
   setActivePlatform: (platform) => set({ activePlatform: platform }),
 
@@ -68,5 +80,25 @@ export const useSocialMediaStore = create<SocialMediaStore>((set, get) => ({
   getAllPosts: () => {
     const state = get();
     return Object.values(state.posts).flat();
+  },
+
+  fetchPosts: async (platform) => {
+    set({ isLoading: true });
+    const { posts, isLive } = await fetchPostsFromApi(platform);
+    set({
+      posts,
+      syncState: { isLive, lastSyncedAt: isLive ? new Date() : null, error: null },
+      isLoading: false,
+    });
+  },
+
+  syncFromOmniSocial: async () => {
+    set((state) => ({ isLoading: true, syncState: { ...state.syncState, error: null } }));
+    const { posts, isLive } = await fetchPostsFromApi();
+    set({
+      posts,
+      syncState: { isLive, lastSyncedAt: isLive ? new Date() : null, error: isLive ? null : "Using demo data — connect OmniSocial in Settings" },
+      isLoading: false,
+    });
   },
 }));

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { LayoutGrid, Grid3X3, RefreshCw } from "lucide-react";
+import { LayoutGrid, Grid3X3, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Platform,
@@ -59,6 +59,10 @@ function SocialManagerContent() {
     getPostsByStatus,
     getAllPosts,
     posts,
+    syncState,
+    isLoading,
+    fetchPosts,
+    syncFromOmniSocial,
   } = useSocialMediaStore();
 
   const [activeColumnTab, setActiveColumnTab] =
@@ -66,6 +70,10 @@ function SocialManagerContent() {
   const [platformStatusTab, setPlatformStatusTab] =
     useState<PostStatus>("scheduled");
   const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    fetchPosts();
+  }, []);
 
   useEffect(() => {
     const p = searchParams.get("platform");
@@ -150,10 +158,11 @@ function SocialManagerContent() {
     [activePlatform, deletePost, posts]
   );
 
-  const handleSync = useCallback(() => {
+  const handleSync = useCallback(async () => {
     setIsSyncing(true);
-    setTimeout(() => setIsSyncing(false), 1500);
-  }, []);
+    await syncFromOmniSocial();
+    setIsSyncing(false);
+  }, [syncFromOmniSocial]);
 
   const platformViewPosts = useMemo(() => {
     const source =
@@ -165,18 +174,32 @@ function SocialManagerContent() {
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 md:p-6 lg:p-8">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
             Social Manager
           </h1>
-          <p className="text-muted-foreground">
-            Manage content across all your social platforms
-          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-muted-foreground">
+              Manage content across all your social platforms
+            </p>
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full",
+                syncState.isLive
+                  ? "bg-emerald-500/10 text-emerald-500"
+                  : "bg-amber-500/10 text-amber-500"
+              )}
+            >
+              {syncState.isLive ? (
+                <><Wifi className="h-3 w-3" /> Live</>
+              ) : (
+                <><WifiOff className="h-3 w-3" /> Demo</>
+              )}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* View Toggle */}
           <div className="bg-accent/50 rounded-lg p-1 flex items-center gap-1">
             <button
               onClick={() => setViewMode("status")}
@@ -204,21 +227,24 @@ function SocialManagerContent() {
             </button>
           </div>
 
-          {/* Sync Button */}
           <button
             onClick={handleSync}
-            className="inline-flex items-center justify-center rounded-md border border-border bg-background p-2 text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Sync"
+            disabled={isLoading || isSyncing}
+            className={cn(
+              "inline-flex items-center justify-center rounded-md border border-border bg-background p-2 text-muted-foreground hover:text-foreground transition-colors",
+              (isLoading || isSyncing) && "opacity-50 cursor-not-allowed"
+            )}
+            aria-label="Sync with OmniSocial"
+            title={syncState.isLive ? "Sync with OmniSocial" : "Sync (demo mode)"}
           >
             <RefreshCw
               className={cn(
                 "h-4 w-4 transition-transform duration-500",
-                isSyncing && "animate-spin"
+                (isLoading || isSyncing) && "animate-spin"
               )}
             />
           </button>
 
-          {/* New Post Dialog */}
           <NewPostDialog
             activePlatform={activePlatform}
             onPostCreated={handlePostCreated}
@@ -226,7 +252,18 @@ function SocialManagerContent() {
         </div>
       </div>
 
-      {/* Platform Pill-Bar */}
+      {syncState.error && (
+        <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-500">
+          {syncState.error}
+        </div>
+      )}
+
+      {syncState.lastSyncedAt && (
+        <div className="mb-2 text-xs text-muted-foreground">
+          Last synced: {syncState.lastSyncedAt.toLocaleTimeString()}
+        </div>
+      )}
+
       <div className="mb-4">
         <PlatformIconBar
           activePlatform={activePlatform}
@@ -234,14 +271,12 @@ function SocialManagerContent() {
         />
       </div>
 
-      {/* Stats Bar */}
       <div className="mb-6">
         <PlatformStats platform={activePlatform} stats={stats} />
       </div>
 
       {viewMode === "status" ? (
         <>
-          {/* Mobile Column Tabs */}
           <div className="flex md:hidden sticky top-0 z-10 backdrop-blur-sm bg-background/80 -mx-4 px-4 py-2 gap-1 mb-4">
             {STATUS_COLUMNS.map((col) => (
               <button
@@ -259,7 +294,6 @@ function SocialManagerContent() {
             ))}
           </div>
 
-          {/* Kanban Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {STATUS_COLUMNS.map((col) => {
               const columnPosts = getPostsByStatus(activePlatform, col.status);
@@ -274,7 +308,6 @@ function SocialManagerContent() {
                       : "hidden md:flex flex-col"
                   )}
                 >
-                  {/* Column Header */}
                   <div className="flex items-center gap-2 mb-3 px-1">
                     <div
                       className={cn("h-2.5 w-2.5 rounded-full", col.dotColor)}
@@ -285,7 +318,6 @@ function SocialManagerContent() {
                     </span>
                   </div>
 
-                  {/* Scroll Area */}
                   <ScrollArea
                     className={cn(
                       "h-[calc(100vh-320px)] md:h-[calc(100vh-280px)]"
@@ -315,7 +347,6 @@ function SocialManagerContent() {
           </div>
         </>
       ) : (
-        /* Platform View */
         <Tabs
           value={platformStatusTab}
           onValueChange={(v) => setPlatformStatusTab(v as PostStatus)}
