@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 
 const PUBLIC_PATHS = ["/login", "/t/"];
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   const isPublic = PUBLIC_PATHS.some(
