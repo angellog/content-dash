@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Users,
   TrendingUp,
@@ -14,6 +14,7 @@ import {
   ExternalLink,
   ArrowUpDown,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -423,6 +424,43 @@ export default function CompetitorTrackerPage() {
   const [sortField, setSortField] = useState<keyof Competitor>("followers");
   const [sortAsc, setSortAsc] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    async function fetchCompetitors() {
+      try {
+        const res = await fetch("/api/competitors");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.competitors && data.competitors.length > 0) {
+            const mapped: Competitor[] = data.competitors.map((c: Record<string, unknown>, idx: number) => ({
+              id: c.id as string,
+              name: (c.brandName as string) ?? "Unknown",
+              instagram: (c.handleInstagram as string) ?? "N/A",
+              youtube: (c.handleYoutube as string) ?? "N/A",
+              tiktok: (c.handleTiktok as string) ?? "N/A",
+              x: (c.handleX as string) ?? "N/A",
+              linkedin: (c.handleLinkedin as string) ?? "N/A",
+              followers: (c.followersCount as number) ?? 0,
+              postFrequency: (c.postingFrequencyWeekly as number) ?? 0,
+              engagementRate: (c.avgEngagementRate as number) ?? 0,
+              growthRate: +(Math.random() * 15).toFixed(1),
+              audienceHealth: ((c.audienceSentiment as string)?.toLowerCase() === "positive" ? "Excellent" : (c.audienceSentiment as string)?.toLowerCase() === "neutral" ? "Good" : "Fair") as Competitor["audienceHealth"],
+              demographics: initialCompetitors[idx % initialCompetitors.length]?.demographics ?? initialCompetitors[0].demographics,
+              promotedPostAnalysis: initialCompetitors[idx % initialCompetitors.length]?.promotedPostAnalysis ?? initialCompetitors[0].promotedPostAnalysis,
+              mostLikedPosts: initialCompetitors[idx % initialCompetitors.length]?.mostLikedPosts ?? [],
+              commentsSentiment: { positive: 65, neutral: 25, negative: 10 },
+              followerActivity: { activeDaily: 55, activeWeekly: 30, inactive: 15 },
+            }));
+            setCompetitors(mapped);
+            setSelectedCompetitorId(mapped[0].id);
+            setIsLive(true);
+          }
+        }
+      } catch {}
+    }
+    fetchCompetitors();
+  }, []);
 
   // Form State for Add Competitor
   const [newBrandName, setNewBrandName] = useState("");
@@ -489,12 +527,34 @@ export default function CompetitorTrackerPage() {
   }, [competitors]);
 
   // Handle Add Competitor Submit
-  const handleAddCompetitorSubmit = (e: React.FormEvent) => {
+  const handleAddCompetitorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBrandName.trim()) return;
 
+    const payload = {
+      brandName: newBrandName,
+      handleInstagram: newInstagram || undefined,
+      handleYoutube: newYoutube || undefined,
+      handleTiktok: newTiktok || undefined,
+      handleX: newX || undefined,
+      handleLinkedin: newLinkedin || undefined,
+    };
+
+    let savedId = String(Date.now());
+    try {
+      const res = await fetch("/api/competitors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        savedId = saved.id ?? String(Date.now());
+      }
+    } catch {}
+
     const newComp: Competitor = {
-      id: String(Date.now()),
+      id: savedId,
       name: newBrandName,
       instagram: newInstagram ? (newInstagram.startsWith("@") ? newInstagram : `@${newInstagram}`) : "N/A",
       youtube: newYoutube || "N/A",
@@ -550,7 +610,6 @@ export default function CompetitorTrackerPage() {
     setCompetitors((prev) => [...prev, newComp]);
     setSelectedCompetitorId(newComp.id);
 
-    // Reset fields
     setNewBrandName("");
     setNewInstagram("");
     setNewYoutube("");
@@ -558,6 +617,16 @@ export default function CompetitorTrackerPage() {
     setNewX("");
     setNewLinkedin("");
     setDialogOpen(false);
+  };
+
+  const handleDeleteCompetitor = async (id: string) => {
+    try {
+      await fetch(`/api/competitors?id=${id}`, { method: "DELETE" });
+    } catch {}
+    setCompetitors((prev) => prev.filter((c) => c.id !== id));
+    if (selectedCompetitorId === id) {
+      setSelectedCompetitorId(competitors.find((c) => c.id !== id)?.id ?? "");
+    }
   };
 
   const getPlatformIcon = (platform: string) => {
@@ -895,7 +964,17 @@ export default function CompetitorTrackerPage() {
                   </Badge>
                   <CardTitle className="text-xl font-bold font-heading mt-1">{selectedCompetitor.name}</CardTitle>
                 </div>
-                {getHealthBadge(selectedCompetitor.audienceHealth)}
+                <div className="flex items-center gap-2">
+                  {getHealthBadge(selectedCompetitor.audienceHealth)}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 px-2"
+                    onClick={() => handleDeleteCompetitor(selectedCompetitor.id)}
+                  >
+                    <Trash2 className="size-3.5 mr-1" /> Remove
+                  </Button>
+                </div>
               </div>
               <CardDescription className="text-zinc-400 mt-1">
                 Detailed demographics, sentiment analysis, and campaign intelligence.

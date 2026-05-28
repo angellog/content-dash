@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/layout/header";
 import {
   Card,
@@ -98,6 +98,37 @@ export default function WhatsAppBillboard() {
   const [isBillboardActive, setIsBillboardActive] = useState(true);
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [activeTab, setActiveTab] = useState("all");
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    async function fetchCampaigns() {
+      try {
+        const res = await fetch("/api/whatsapp/campaigns");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.campaigns && data.campaigns.length > 0) {
+            setCampaigns(
+              data.campaigns.map((c: Record<string, unknown>) => ({
+                id: c.id as string,
+                name: (c.campaignName as string) ?? "",
+                scheduledTime: c.scheduledAt ? new Date(c.scheduledAt as string).toLocaleString() : "TBD",
+                text: (c.caption as string) ?? "",
+                mediaType: "image",
+                mediaUrl: (c.mediaUrl as string) ?? "",
+                status: ((c.status as string) === "PUBLISHED" ? "Active" : (c.status as string) === "QUEUED" ? "Scheduled" : (c.status as string) === "FAILED" ? "Failed" : "Scheduled"),
+                views: (c.viewsCount as number) ?? 0,
+                clicks: (c.clicksCount as number) ?? 0,
+                replies: (c.repliesCount as number) ?? 0,
+                spend: "$0.00",
+              }))
+            );
+            setIsLive(true);
+          }
+        }
+      } catch {}
+    }
+    fetchCampaigns();
+  }, []);
 
   // New Campaign Form State
   const [newCampaignName, setNewCampaignName] = useState("");
@@ -110,9 +141,29 @@ export default function WhatsAppBillboard() {
   );
   const [newCampaignTime, setNewCampaignTime] = useState("Today, 6:00 PM");
 
-  const handleCreateCampaign = (e: React.FormEvent) => {
+  const handleCreateCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCampaignName.trim()) return;
+
+    const mediaUrl =
+      newCampaignMediaType === "color"
+        ? "from-purple-900 to-emerald-950"
+        : newCampaignMediaUrl;
+
+    try {
+      await fetch("/api/whatsapp/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignName: newCampaignName,
+          caption: newCampaignText,
+          mediaType: newCampaignMediaType.toUpperCase(),
+          mediaUrl,
+          scheduledAt: newCampaignTime,
+          status: "QUEUED",
+        }),
+      });
+    } catch {}
 
     const newCamp = {
       id: `camp-${Date.now()}`,
@@ -120,10 +171,7 @@ export default function WhatsAppBillboard() {
       scheduledTime: newCampaignTime,
       text: newCampaignText,
       mediaType: newCampaignMediaType,
-      mediaUrl:
-        newCampaignMediaType === "color"
-          ? "from-purple-900 to-emerald-950"
-          : newCampaignMediaUrl,
+      mediaUrl,
       status: "Scheduled" as const,
       views: 0,
       clicks: 0,

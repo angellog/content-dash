@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/layout/header";
 import {
   Card,
@@ -61,19 +61,88 @@ export default function SmartNfcCards() {
   const [checkoutStep, setCheckoutStep] = useState("form"); // form | success
 
   // Mock stats
-  const activeCards = [
+  const [activeCards, setActiveCards] = useState([
     { id: "nfc-1", name: "HQ Front Desk Card", type: "Link-in-Bio", taps: 428, status: "Active" },
     { id: "nfc-2", name: "CEO's Pitch Tag", type: "WhatsApp Chat", taps: 189, status: "Active" },
     { id: "nfc-3", name: "Conference Metal Card", type: "Custom URL", taps: 94, status: "Active" },
-  ];
+  ]);
+  const [isLive, setIsLive] = useState(false);
 
-  const handleConfigSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    async function fetchCards() {
+      try {
+        const res = await fetch("/api/nfc/cards");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.cards && data.cards.length > 0) {
+            setActiveCards(
+              data.cards.map((c: Record<string, unknown>) => ({
+                id: c.id as string,
+                name: (c.cardName as string) ?? "",
+                type: (c.redirectType as string) ?? "Custom URL",
+                taps: (c.tapEvents as { count: number }[])?.[0]?.count ?? 0,
+                status: (c.isActive as boolean) ? "Active" : "Inactive",
+              }))
+            );
+            setIsLive(true);
+          }
+        }
+      } catch {}
+    }
+    fetchCards();
+  }, []);
+
+  const handleConfigSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert("NFC Redirect Configuration updated successfully! Tap active cards will now instantly redirect.");
+    const targetUrl =
+      redirectType === "whatsapp"
+        ? `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`
+        : redirectUrl;
+
+    try {
+      const res = await fetch("/api/nfc/cards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cardName: customTitle || "My NFC Card",
+          redirectType: redirectType.toUpperCase(),
+          targetUrl,
+          isActive: true,
+        }),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setActiveCards((prev) => [
+          ...prev,
+          {
+            id: saved.card?.id ?? `nfc-${Date.now()}`,
+            name: customTitle || "My NFC Card",
+            type: redirectType === "whatsapp" ? "WhatsApp Chat" : redirectType === "instagram" ? "Link-in-Bio" : "Custom URL",
+            taps: 0,
+            status: "Active",
+          },
+        ]);
+        setIsLive(true);
+      }
+    } catch {}
   };
 
-  const handleCheckoutSubmit = (e: React.FormEvent) => {
+  const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      await fetch("/api/nfc/cards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cardName: businessLogoName || `NFC Card - ${cardColor}`,
+          redirectType: redirectType.toUpperCase(),
+          targetUrl: redirectType === "whatsapp"
+            ? `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`
+            : redirectUrl,
+          isActive: true,
+        }),
+      });
+    } catch {}
     setCheckoutStep("success");
   };
 

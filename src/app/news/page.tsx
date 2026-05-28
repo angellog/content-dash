@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Rss,
   Flame,
@@ -174,6 +174,9 @@ const mockArticles: NewsArticle[] = [
 ]
 
 export default function NewsPage() {
+  const [articles, setArticles] = useState<NewsArticle[]>(mockArticles)
+  const [featuredArticle, setFeaturedArticle] = useState<NewsArticle>(mockArticles[0])
+  const [isLive, setIsLive] = useState(false)
   const [selectedTopic, setSelectedTopic] = useState<Topic>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState("newest")
@@ -187,8 +190,25 @@ export default function NewsPage() {
   const [isSending, setIsSending] = useState(false)
   const [sendSuccess, setSendSuccess] = useState(false)
 
+  useEffect(() => {
+    async function fetchNews() {
+      try {
+        const res = await fetch("/api/news")
+        if (res.ok) {
+          const data = await res.json()
+          if (data.isLive && data.articles.length > 0) {
+            setArticles(data.articles)
+            setFeaturedArticle(data.articles[0])
+            setIsLive(true)
+          }
+        }
+      } catch {}
+    }
+    fetchNews()
+  }, [])
+
   // Filtering Logic
-  const filteredArticles = mockArticles.filter((article) => {
+  const filteredArticles = articles.filter((article) => {
     const matchesTopic = selectedTopic === "All" || article.category === selectedTopic
     const matchesSearch =
       article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -239,6 +259,11 @@ export default function NewsPage() {
           <div className="flex items-center gap-2 mb-2">
             <Rss className="h-6 w-6 text-orange-500" />
             <h1 className="text-3xl font-bold tracking-tight text-white">News Consolidator</h1>
+            {isLive && (
+              <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] uppercase tracking-wider">
+                Live Feed
+              </Badge>
+            )}
           </div>
           <p className="text-sm text-zinc-400">
             Monitor real-time creator economy trends, tools, and AI developments to synthesize custom OmniSocial content pipelines.

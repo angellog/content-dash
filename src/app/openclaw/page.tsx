@@ -76,6 +76,17 @@ export default function OpenClawAgent() {
     { timestamp: "12:05:08", type: "success", message: "Drafted reply to customer query 'Are you open weekends?' on Instagram" },
   ]);
 
+  useEffect(() => {
+    async function checkConnection() {
+      const res = await fetch("/api/omnisocial/config");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.connected) setIsUnlocked(true);
+      }
+    }
+    checkConnection();
+  }, []);
+
   // Log simulation after unlock
   useEffect(() => {
     if (!isUnlocked) return;
@@ -100,13 +111,34 @@ export default function OpenClawAgent() {
     return () => clearInterval(timer);
   }, [isUnlocked]);
 
-  const handleUnlock = (e: React.FormEvent) => {
+  const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apiKey.trim() || !apiKey.startsWith("OS-")) {
-      alert("Please enter a valid OmniSocial API key (starts with 'OS-') to establish agent handshake.");
+    if (!apiKey.trim()) {
+      alert("Please enter your OmniSocial API key to establish agent handshake.");
       return;
     }
-    setIsUnlocked(true);
+
+    try {
+      const res = await fetch("https://api.omnisocials.com/v1/accounts", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (res.ok) {
+        const configRes = await fetch("/api/omnisocial/config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apiKey }),
+        });
+        if (configRes.ok) {
+          setIsUnlocked(true);
+        } else {
+          alert("Failed to save API key. Please try again.");
+        }
+      } else {
+        alert("Invalid API key. Check your OmniSocial dashboard.");
+      }
+    } catch {
+      alert("Connection failed. Check your network.");
+    }
   };
 
   const handleAddCompetitor = (e: React.FormEvent) => {

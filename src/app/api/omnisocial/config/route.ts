@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { parseOmniSocialInput, ConnectionType } from "@/lib/api/omnisocial-proxy";
+import { encrypt, decrypt } from "@/lib/encryption";
 
 function maskApiKey(key: string) {
   if (key.length <= 4) return "****";
@@ -31,20 +32,27 @@ export async function GET(req: NextRequest) {
     .single();
 
   if (!config || config.status !== "ACTIVE") {
+    let maskedKey = null;
+    if (config?.apiKeyEncrypted) {
+      try { maskedKey = maskApiKey(decrypt(config.apiKeyEncrypted)); } catch { maskedKey = maskApiKey(config.apiKeyEncrypted); }
+    }
     return NextResponse.json({
       status: config?.status ?? "NOT_CONFIGURED",
       connected: false,
-      apiKeyMasked: config ? maskApiKey(config.apiKeyEncrypted) : null,
+      apiKeyMasked: maskedKey,
       lastSyncedAt: config?.lastSyncedAt ?? null,
       connectionType: config?.connectionType ?? null,
       mcpUrl: config?.mcpUrl ?? null,
     });
   }
 
+  let decryptedKey: string;
+  try { decryptedKey = decrypt(config.apiKeyEncrypted); } catch { decryptedKey = config.apiKeyEncrypted; }
+
   return NextResponse.json({
     status: config.status,
     connected: true,
-    apiKeyMasked: maskApiKey(config.apiKeyEncrypted),
+    apiKeyMasked: maskApiKey(decryptedKey),
     lastSyncedAt: config.lastSyncedAt,
     connectionType: config.connectionType,
     mcpUrl: config.mcpUrl,
@@ -70,6 +78,9 @@ export async function PUT(req: NextRequest) {
   const { apiKey, mcpUrl } = parseOmniSocialInput(rawInput);
   const connectionType: ConnectionType = mcpUrl ? "mcp_url" : "api_key";
 
+  let encryptedKey: string;
+  try { encryptedKey = encrypt(apiKey); } catch { encryptedKey = apiKey; }
+
   const { data: existing } = await supabase
     .from("OmniSocialConfig")
     .select("id")
@@ -77,7 +88,7 @@ export async function PUT(req: NextRequest) {
     .single();
 
   const upsertData = {
-    apiKeyEncrypted: apiKey,
+    apiKeyEncrypted: encryptedKey,
     connectionType,
     mcpUrl,
     status: "ACTIVE",
@@ -108,10 +119,13 @@ export async function PUT(req: NextRequest) {
     result = data;
   }
 
+  let displayKey: string;
+  try { displayKey = decrypt(result.apiKeyEncrypted); } catch { displayKey = result.apiKeyEncrypted; }
+
   return NextResponse.json({
     status: result.status,
     connected: true,
-    apiKeyMasked: maskApiKey(result.apiKeyEncrypted),
+    apiKeyMasked: maskApiKey(displayKey),
     lastSyncedAt: result.lastSyncedAt,
     connectionType: result.connectionType,
     mcpUrl: result.mcpUrl,

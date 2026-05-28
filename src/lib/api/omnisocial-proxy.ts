@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { OMNISOCIAL_API_BASE } from "@/lib/omnisocial";
+import { decrypt } from "@/lib/encryption";
 
 export function parseOmniSocialInput(input: string): {
   apiKey: string;
@@ -62,8 +63,11 @@ export async function getOmniSocialApiKey(req: NextRequest) {
     };
   }
 
+  let decryptedKey: string;
+  try { decryptedKey = decrypt(config.apiKeyEncrypted); } catch { decryptedKey = config.apiKeyEncrypted; }
+
   return {
-    apiKey: config.apiKeyEncrypted,
+    apiKey: decryptedKey,
     userId: user.id,
     connectionType: (config.connectionType as ConnectionType) ?? "api_key",
     mcpUrl: config.mcpUrl ?? null,
