@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  image         String?
+  plan          Plan     @default(FREE)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  omnisocialConfig OmniSocialConfig?
+  nfcCards          NFCCard[]
+  competitors       CompetitorWatch[]
+  whatsappCampaigns WhatsAppBillboardCampaign[]
+}
+
+model OmniSocialConfig {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKeyEncrypted String
+  lastSyncedAt    DateTime?
+  status          OmniSocialStatus @default(UNCONFIGURED)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model NFCCard {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cardSlug        String   @unique
+  cardName        String
+  color           NFCColor  @default(MATTE_BLACK)
+  redirectType    NFCRedirectType @default(INSTAGRAM)
+  destinationUrl  String
+  isActive        Boolean  @default(true)
+  orderStatus     NFCOrderStatus @default(ORDERED)
+  stripeSessionId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tapEvents NFCTapEvent[]
+}
+
+model NFCTapEvent {
+  id              String   @id @default(cuid())
+  cardId          String
+  card            NFCCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  tappedAt        DateTime @default(now())
+  ipAddress       String?
+  userAgent       String?
+  deviceType      DeviceType @default(OTHER)
+  city            String?
+  country         String?
+  latitude        Float?
+  longitude       Float?
+}
+
+model CompetitorWatch {
+  id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandName             String
+  handleInstagram       String?
+  handleYoutube         String?
+  handleTiktok          String?
+  handleX               String?
+  handleLinkedin        String?
+  followersCount        Int      @default(0)
+  avgEngagementRate     Float    @default(0)
+  postingFrequencyWeekly Int    @default(0)
+  lastScrapedAt         DateTime?
+  audienceSentiment     Sentiment @default(NEUTRAL)
+  activeAdCampaignsCount Int    @default(0)
+  estimatedAdSpendMonthly Int   @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model WhatsAppBillboardCampaign {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignName  String
+  mediaUrl      String
+  caption       String?
+  redirectUrl   String?
+  scheduledAt   DateTime
+  status        WhatsAppStatus @default(QUEUED)
+  errors        String?
+  viewsCount    Int      @default(0)
+  clicksCount   Int      @default(0)
+  repliesCount  Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum OmniSocialStatus {
+  UNCONFIGURED
+  ACTIVE
+  INVALID
+}
+
+enum NFCColor {
+  MATTE_BLACK
+  BRUSHED_GOLD
+  STERLING_SILVER
+}
+
+enum NFCRedirectType {
+  INSTAGRAM
+  LINK_IN_BIO
+  CUSTOM_URL
+  WHATSAPP_CHAT
+}
+
+enum NFCOrderStatus {
+  ORDERED
+  PRINTED
+  SHIPPED
+  ACTIVE
+}
+
+enum DeviceType {
+  IOS
+  ANDROID
+  DESKTOP
+  OTHER
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum WhatsAppStatus {
+  QUEUED
+  SENDING
+  PUBLISHED
+  FAILED
+}
