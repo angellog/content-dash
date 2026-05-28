@@ -1,14 +1,13 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
 import { Globe } from "lucide-react";
-import { motion } from "framer-motion";
 import {
   Platform,
-  PLATFORM_CONFIG,
-  PLATFORM_ORDER,
-  CONNECTED_PLATFORMS,
-} from "@/lib/omnisocial";
+  PLATFORMS,
+  PLATFORM_LABELS,
+  PLATFORM_COLORS,
+} from "@/types/social";
+import { PLATFORM_CONFIG } from "@/lib/omnisocial";
 import { cn } from "@/lib/utils";
 
 function InstagramIcon({ className }: { className?: string }) {
@@ -54,17 +53,27 @@ function ThreadsIcon({ className }: { className?: string }) {
 
 function TikTokIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 function YouTubeIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.43z" fill="none" stroke="currentColor" strokeWidth="2" />
-      <polygon points="9.75 15.02 15.5 11.75 9.75 8.48" />
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <polygon points="9.75 15.02 15.5 11.75 9.75 8.48" fill="currentColor" />
     </svg>
   );
 }
@@ -120,124 +129,56 @@ interface PlatformIconBarProps {
 }
 
 export function PlatformIconBar({ activePlatform, onSelect }: PlatformIconBarProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [showLeftFade, setShowLeftFade] = useState(false);
-  const [showRightFade, setShowRightFade] = useState(false);
-
-  const checkOverflow = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setShowLeftFade(el.scrollLeft > 8);
-    setShowRightFade(el.scrollLeft + el.clientWidth < el.scrollWidth - 8);
-  }, []);
-
-  useEffect(() => {
-    checkOverflow();
-    const el = scrollRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", checkOverflow, { passive: true });
-    window.addEventListener("resize", checkOverflow);
-    return () => {
-      el.removeEventListener("scroll", checkOverflow);
-      window.removeEventListener("resize", checkOverflow);
-    };
-  }, [checkOverflow]);
-
-  const handleSelect = useCallback(
-    (platform: Platform | "all") => {
-      onSelect(platform);
-    },
-    [onSelect]
-  );
-
-  const scrollIntoView = useCallback((node: HTMLDivElement | null) => {
-    if (node) {
-      node.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-    }
-  }, []);
-
-  const isConnected = useCallback(
-    (p: Platform) => CONNECTED_PLATFORMS.includes(p),
-    []
-  );
-
   return (
-    <div className="relative bg-zinc-950 rounded-xl border border-zinc-800 px-2 py-3">
-      <div
-        ref={scrollRef}
-        className="flex items-start gap-1 overflow-x-auto scrollbar-hide scroll-smooth"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-      >
-        <div className="flex items-start gap-1 min-w-max px-4">
-          <div className="flex flex-col items-center gap-1.5" ref={activePlatform === "all" ? scrollIntoView : undefined}>
-            <motion.button
-              whileHover={{ filter: "brightness(1.15)" }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => handleSelect("all")}
+    <>
+      <style>{`.scrollbar-hide::-webkit-scrollbar{display:none}.scrollbar-hide{-ms-overflow-style:none;scrollbar-width:none}`}</style>
+      <div className="flex items-center gap-1.5 p-1.5 bg-accent/30 rounded-2xl border border-border/50 overflow-x-auto scrollbar-hide">
+        <button
+          onClick={() => onSelect("all")}
+          title="All platforms"
+          className={cn(
+            "min-w-[44px] min-h-[44px] rounded-xl transition-all duration-200 flex items-center justify-center relative",
+            activePlatform === "all"
+              ? "bg-background shadow-md scale-110 ring-1 ring-border text-foreground"
+              : "text-muted-foreground opacity-60 hover:opacity-100 hover:bg-white/5"
+          )}
+        >
+          <Globe className="w-5 h-5" />
+        </button>
+
+        {PLATFORMS.map((platform) => {
+          const Icon = PLATFORM_ICONS[platform];
+          const active = activePlatform === platform;
+          const connected = PLATFORM_CONFIG[platform].connected;
+
+          return (
+            <button
+              key={platform}
+              onClick={() => onSelect(platform)}
+              title={PLATFORM_LABELS[platform]}
+              style={
+                { "--hover-bg": `${PLATFORM_COLORS[platform]}1a` } as React.CSSProperties
+              }
               className={cn(
-                "relative flex items-center justify-center w-12 h-12 rounded-full border-2 transition-colors",
-                activePlatform === "all"
-                  ? "bg-zinc-900 border-white ring-2 ring-zinc-400 scale-110"
-                  : "bg-zinc-800 border-zinc-500 hover:border-zinc-400"
+                "min-w-[44px] min-h-[44px] rounded-xl transition-all duration-200 flex items-center justify-center relative",
+                active
+                  ? "bg-background shadow-md scale-110 ring-1 ring-border"
+                  : "text-muted-foreground opacity-60 hover:opacity-100 hover:bg-[var(--hover-bg)]"
               )}
             >
-              <Globe className="w-5 h-5 text-zinc-300" />
-            </motion.button>
-            <span className="text-[10px] text-zinc-500 font-medium">All</span>
-          </div>
-
-          {PLATFORM_ORDER.map((platform) => {
-            const config = PLATFORM_CONFIG[platform];
-            const Icon = PLATFORM_ICONS[platform];
-            const active = activePlatform === platform;
-
-            return (
-              <div
-                key={platform}
-                className="flex flex-col items-center gap-1.5"
-                ref={active ? scrollIntoView : undefined}
+              <span
+                className="w-5 h-5 transition-colors duration-200 flex items-center justify-center"
+                style={active ? { color: PLATFORM_COLORS[platform] } : undefined}
               >
-                <motion.button
-                  whileHover={{ filter: "brightness(1.15)" }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => handleSelect(platform)}
-                  title={config.name}
-                  className={cn(
-                    "relative flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all",
-                    active
-                      ? "bg-zinc-900 scale-110"
-                      : "bg-zinc-800 border-zinc-500 hover:border-zinc-400"
-                  )}
-                  style={{
-                    borderColor: active ? config.color : undefined,
-                    boxShadow: active ? `0 0 0 2px ${config.color}40` : undefined,
-                  }}
-                >
-                  <span style={active ? { color: config.color } : { color: "#a1a1aa" }}>
-                    <Icon className="w-5 h-5" />
-                  </span>
-                  <span
-                    className={cn(
-                      "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-950",
-                      isConnected(platform) ? "bg-emerald-500" : "bg-zinc-600"
-                    )}
-                  />
-                </motion.button>
-                <span className={cn("text-[10px] font-medium", active ? "text-zinc-300" : "text-zinc-500")}>
-                  {config.name}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+                <Icon className="w-5 h-5" />
+              </span>
+              {connected && (
+                <span className="absolute bottom-1 right-1 w-[5px] h-[5px] rounded-full bg-emerald-500" />
+              )}
+            </button>
+          );
+        })}
       </div>
-
-      {showLeftFade && (
-        <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-zinc-950 to-transparent pointer-events-none rounded-l-xl" />
-      )}
-      {showRightFade && (
-        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-zinc-950 to-transparent pointer-events-none rounded-r-xl" />
-      )}
-    </div>
+    </>
   );
 }

@@ -1,24 +1,20 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
-import { Plus, Image as ImageIcon } from "lucide-react"
+import { useState, useMemo } from "react"
+import { Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
-import {
-  type Platform,
-  PLATFORM_CONFIG,
-  CONNECTED_PLATFORMS,
-} from "@/lib/omnisocial"
+import { type Platform, type Post, type PostStatus } from "@/types/social"
+import { PLATFORM_CONFIG, CONNECTED_PLATFORMS } from "@/lib/omnisocial"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
-  DialogTrigger,
+  DialogClose,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -26,148 +22,166 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+
+const ALL_POST_TYPES = ["Post", "Reel", "Story", "Carousel", "Video", "Short", "Pin"]
+
+const STATUS_OPTIONS: { value: PostStatus; label: string }[] = [
+  { value: "scheduled", label: "Scheduled" },
+  { value: "draft", label: "Draft" },
+  { value: "backlog", label: "Backlog" },
+  { value: "published", label: "Published" },
+]
 
 interface NewPostDialogProps {
   activePlatform: Platform | "all"
-  onPostCreated?: (post: any) => void
+  onPostCreated?: (platform: Platform, post: Omit<Post, "id">) => void
 }
 
-export function NewPostDialog({
-  activePlatform,
-  onPostCreated,
-}: NewPostDialogProps) {
+export function NewPostDialog({ activePlatform, onPostCreated }: NewPostDialogProps) {
   const [open, setOpen] = useState(false)
   const [caption, setCaption] = useState("")
   const [postType, setPostType] = useState("Post")
-  const [scheduledDate, setScheduledDate] = useState("")
+  const [status, setStatus] = useState<PostStatus>("draft")
+  const [postDate, setPostDate] = useState("")
+  const [hashtags, setHashtags] = useState("")
+  const [threadMode, setThreadMode] = useState(false)
+  const [videoDuration, setVideoDuration] = useState("")
+  const [referenceLink, setReferenceLink] = useState("")
   const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>([])
 
-  const isSinglePlatform = activePlatform !== "all"
-  const singleConfig = isSinglePlatform ? PLATFORM_CONFIG[activePlatform] : null
+  const isAll = activePlatform === "all"
 
-  const availablePostTypes = useMemo(() => {
-    if (isSinglePlatform && singleConfig) return singleConfig.postTypes
-    if (selectedPlatforms.length > 0) {
-      const allTypes = selectedPlatforms.map(
-        (p) => PLATFORM_CONFIG[p].postTypes
-      )
-      const common = allTypes.reduce((acc, types) =>
-        acc.filter((t) => types.includes(t))
-      )
-      return common.length > 0 ? common : ["Post"]
-    }
-    return ["Post"]
-  }, [isSinglePlatform, singleConfig, selectedPlatforms])
+  const targetPlatforms = useMemo<Platform[]>(() => {
+    if (!isAll) return [activePlatform]
+    return selectedPlatforms
+  }, [isAll, activePlatform, selectedPlatforms])
 
   const charLimit = useMemo(() => {
-    if (isSinglePlatform && singleConfig) return singleConfig.charLimit
-    if (selectedPlatforms.length > 0)
-      return Math.min(
-        ...selectedPlatforms.map((p) => PLATFORM_CONFIG[p].charLimit)
-      )
-    return 2200
-  }, [isSinglePlatform, singleConfig, selectedPlatforms])
+    if (!isAll) return PLATFORM_CONFIG[activePlatform].charLimit
+    if (selectedPlatforms.length > 0) {
+      return Math.min(...selectedPlatforms.map((p) => PLATFORM_CONFIG[p].charLimit))
+    }
+    if (CONNECTED_PLATFORMS.length > 0) {
+      return Math.min(...CONNECTED_PLATFORMS.map((p) => PLATFORM_CONFIG[p].charLimit))
+    }
+    return Infinity
+  }, [isAll, activePlatform, selectedPlatforms])
 
+  const showHashtags = targetPlatforms.some((p) => p === "instagram" || p === "tiktok")
+  const showThreadMode = targetPlatforms.some((p) => p === "x")
+  const showVideoDuration = targetPlatforms.some((p) => p === "youtube" || p === "tiktok")
+  const showReferenceLink = targetPlatforms.some(
+    (p) => p === "facebook" || p === "instagram" || p === "linkedin"
+  )
+
+  const postTypes = useMemo(() => {
+    if (isAll) return ALL_POST_TYPES
+    return PLATFORM_CONFIG[activePlatform].postTypes
+  }, [isAll, activePlatform])
+
+  const placeholder = !isAll && activePlatform === "x" ? "What's happening?" : "Write your caption..."
   const charCount = caption.length
   const isOverLimit = charCount > charLimit
 
-  useEffect(() => {
-    if (postType && !availablePostTypes.includes(postType)) {
-      setPostType(availablePostTypes[0])
-    }
-  }, [availablePostTypes, postType])
-
   const togglePlatform = (platform: Platform) => {
     setSelectedPlatforms((prev) =>
-      prev.includes(platform)
-        ? prev.filter((p) => p !== platform)
-        : [...prev, platform]
+      prev.includes(platform) ? prev.filter((p) => p !== platform) : [...prev, platform]
     )
   }
 
-  const handleSubmit = () => {
-    if (isOverLimit || !caption.trim()) return
-    if (!isSinglePlatform && selectedPlatforms.length === 0) return
-
-    const payload = {
-      caption,
-      type: postType || availablePostTypes[0],
-      platforms: isSinglePlatform ? [activePlatform] : selectedPlatforms,
-      scheduledAt: scheduledDate || undefined,
-      media: [] as string[],
-    }
-
-    console.log("Post created:", payload)
-    onPostCreated?.(payload)
-
+  const resetForm = () => {
     setCaption("")
     setPostType("Post")
-    setScheduledDate("")
+    setStatus("draft")
+    setPostDate("")
+    setHashtags("")
+    setThreadMode(false)
+    setVideoDuration("")
+    setReferenceLink("")
     setSelectedPlatforms([])
+  }
+
+  const handleSubmit = () => {
+    if (!caption.trim()) return
+    const platforms = isAll ? selectedPlatforms : [activePlatform]
+    for (const platform of platforms) {
+      onPostCreated?.(platform, {
+        caption: caption.trim(),
+        type: postType,
+        status,
+        platform,
+        scheduledDate: postDate || undefined,
+        ...(showHashtags && hashtags.trim()
+          ? { hashtags: hashtags.split(",").map((h) => h.trim()).filter(Boolean) }
+          : {}),
+        ...(showThreadMode && threadMode ? { isThread: true } : {}),
+        ...(showVideoDuration && videoDuration.trim() ? { videoDuration: videoDuration.trim() } : {}),
+        ...(showReferenceLink && referenceLink.trim() ? { link: referenceLink.trim() } : {}),
+      })
+    }
+    resetForm()
     setOpen(false)
   }
 
+  const canSubmit = caption.trim().length > 0 && (isAll ? selectedPlatforms.length > 0 : true)
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm() }}>
       <DialogTrigger
         render={
           <Button className="gap-2">
             <Plus className="size-4" />
-            New Post
+            Add Content
           </Button>
         }
       />
-      <DialogContent className="sm:max-w-xl bg-zinc-900 border border-zinc-800 ring-0 max-h-[85vh] overflow-y-auto">
+      <DialogContent className="h-[92dvh] sm:h-auto flex flex-col sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-zinc-100">
-            {isSinglePlatform
-              ? `New ${singleConfig?.name} Post`
-              : "New Cross-Platform Post"}
-          </DialogTitle>
+          <DialogTitle>New Post</DialogTitle>
         </DialogHeader>
 
-        {isSinglePlatform && singleConfig && (
-          <div
-            className={cn(
-              "h-1 w-full rounded-full bg-gradient-to-r",
-              singleConfig.gradient
-            )}
-          />
-        )}
-
-        <div className="flex flex-col gap-4">
-          {!isSinglePlatform && (
-            <div className="flex flex-col gap-2">
-              <Label className="text-zinc-400">Platforms</Label>
-              <div className="flex flex-wrap gap-2">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1 -mr-1">
+          {isAll && (
+            <div className="space-y-2">
+              <Label>Platforms</Label>
+              <div className="grid grid-cols-2 gap-2">
                 {CONNECTED_PLATFORMS.map((platform) => {
                   const config = PLATFORM_CONFIG[platform]
-                  const isSelected = selectedPlatforms.includes(platform)
+                  const checked = selectedPlatforms.includes(platform)
                   return (
                     <button
                       key={platform}
                       type="button"
                       onClick={() => togglePlatform(platform)}
                       className={cn(
-                        "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all",
-                        isSelected
-                          ? "text-white"
-                          : "border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-400"
+                        "flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+                        checked
+                          ? "border-primary/50 bg-primary/10 text-foreground"
+                          : "border-border text-muted-foreground hover:bg-muted/50"
                       )}
-                      style={
-                        isSelected
-                          ? {
-                              backgroundColor: config.color + "20",
-                              borderColor: config.color + "60",
-                            }
-                          : undefined
-                      }
                     >
+                      <span
+                        className={cn(
+                          "flex size-4 shrink-0 items-center justify-center rounded-sm border",
+                          checked
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-input"
+                        )}
+                      >
+                        {checked && (
+                          <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </span>
                       <span
                         className="size-2.5 shrink-0 rounded-full"
                         style={{ backgroundColor: config.color }}
                       />
-                      {config.name}
+                      <span className="font-medium">{config.name}</span>
                     </button>
                   )
                 })}
@@ -175,78 +189,91 @@ export function NewPostDialog({
             </div>
           )}
 
-          <div className="flex flex-col gap-2">
-            <Label className="text-zinc-400">Caption</Label>
-            <div className="relative">
-              <Textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                placeholder="Write your caption..."
-                className="min-h-24 resize-none border-zinc-700 bg-zinc-800/50 pr-16 text-zinc-100 placeholder:text-zinc-600"
-                rows={4}
-              />
-              <span
-                className={cn(
-                  "absolute bottom-2 right-3 font-mono text-xs",
-                  isOverLimit
-                    ? "font-bold text-red-500"
-                    : "text-zinc-500"
-                )}
-              >
-                {charCount}/{charLimit}
-              </span>
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="caption">Caption</Label>
+            <textarea
+              id="caption"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              placeholder={placeholder}
+              className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <p className={cn("text-xs text-right text-muted-foreground", isOverLimit && "text-destructive")}>
+              {charCount}/{charLimit === Infinity ? "∞" : charLimit}
+            </p>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label className="text-zinc-400">Post Type</Label>
-            <Select
-              value={postType || availablePostTypes[0]}
-              onValueChange={(v) => v !== null && setPostType(v)}
-            >
-              <SelectTrigger className="w-full border-zinc-700 bg-zinc-800/50 text-zinc-100">
-                <SelectValue />
+          <div className="space-y-1.5">
+            <Label>Format</Label>
+            <Select value={postType} onValueChange={(v) => v !== null && setPostType(v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select format" />
               </SelectTrigger>
-              <SelectContent className="border-zinc-700 bg-zinc-900">
-                {availablePostTypes.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type}
-                  </SelectItem>
+              <SelectContent>
+                {postTypes.map((type) => (
+                  <SelectItem key={type} value={type}>{type}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label className="text-zinc-400">Schedule</Label>
-            <Input
-              type="datetime-local"
-              value={scheduledDate}
-              onChange={(e) => setScheduledDate(e.target.value)}
-              className="border-zinc-700 bg-zinc-800/50 text-zinc-100 [color-scheme:dark]"
-            />
+          <div className="space-y-1.5">
+            <Label>Status</Label>
+            <Select value={status} onValueChange={(v) => v !== null && setStatus(v as PostStatus)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label className="text-zinc-400">Media</Label>
-            <div className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-zinc-700 bg-zinc-800/30 px-4 py-8 text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-400">
-              <ImageIcon className="size-5" />
-              <span className="text-sm font-medium">Upload media</span>
+          <div className="space-y-1.5">
+            <Label htmlFor="post-date">Post Date</Label>
+            <Input id="post-date" type="date" value={postDate} onChange={(e) => setPostDate(e.target.value)} />
+          </div>
+
+          {showHashtags && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-1.5">
+              <Label htmlFor="hashtags">Hashtags</Label>
+              <Input id="hashtags" value={hashtags} onChange={(e) => setHashtags(e.target.value)} placeholder="Add hashtags separated by commas" />
             </div>
-          </div>
+          )}
 
-          <Button
-            onClick={handleSubmit}
-            disabled={
-              isOverLimit ||
-              !caption.trim() ||
-              (!isSinglePlatform && selectedPlatforms.length === 0)
-            }
-            className="w-full"
-          >
-            {scheduledDate ? "Schedule Post" : "Publish Now"}
-          </Button>
+          {showThreadMode && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center justify-between rounded-md border border-border px-4 py-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="thread-mode">Thread Mode</Label>
+                  <p className="text-xs text-muted-foreground">Enable to create a thread of connected posts</p>
+                </div>
+                <Switch id="thread-mode" checked={threadMode} onCheckedChange={setThreadMode} />
+              </div>
+            </div>
+          )}
+
+          {showVideoDuration && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-1.5">
+              <Label htmlFor="video-duration">Video Duration</Label>
+              <Input id="video-duration" value={videoDuration} onChange={(e) => setVideoDuration(e.target.value)} placeholder="0:30" />
+            </div>
+          )}
+
+          {showReferenceLink && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-1.5">
+              <Label htmlFor="reference-link">Reference Link</Label>
+              <Input id="reference-link" value={referenceLink} onChange={(e) => setReferenceLink(e.target.value)} placeholder="https://..." />
+            </div>
+          )}
         </div>
+
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+          <Button onClick={handleSubmit} disabled={!canSubmit}>Add to Queue</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

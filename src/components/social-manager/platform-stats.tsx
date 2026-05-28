@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Platform, PLATFORM_CONFIG } from "@/lib/omnisocial"
 import { FileText, Clock, Heart, Users, TrendingUp } from "lucide-react"
-import { motion } from "framer-motion"
+import { cn } from "@/lib/utils"
 
 interface PlatformStatsProps {
   platform: Platform | "all"
@@ -32,51 +32,48 @@ export function PlatformStats({ platform, stats }: PlatformStatsProps) {
         const value = stats[metric.key]
 
         return (
-          <motion.div
+          <Card
             key={metric.key}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: i * 0.08 }}
+            className="bg-zinc-900 border-zinc-800 overflow-hidden relative animate-in fade-in slide-in-from-bottom-2 duration-300"
+            style={{ animationDelay: `${i * 80}ms`, animationFillMode: "both" }}
           >
-            <Card className="bg-zinc-900 border-zinc-800 overflow-hidden">
-              <CardContent className="p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div
-                    className="p-1.5 rounded-md"
-                    style={
-                      accent
-                        ? { backgroundColor: `${accent}20` }
-                        : { backgroundColor: "rgba(161,161,170,0.15)" }
-                    }
-                  >
-                    <Icon
-                      className="w-4 h-4"
-                      style={accent ? { color: accent } : { color: "#a1a1aa" }}
-                    />
-                  </div>
-                  <span className="text-[11px] font-medium text-emerald-400 flex items-center gap-0.5">
-                    <TrendingUp className="w-3 h-3" />
-                    {metric.trend}
-                  </span>
-                </div>
-                <div>
-                  <p
-                    className="text-xl font-semibold tabular-nums"
-                    style={accent ? { color: accent } : { color: "#fafafa" }}
-                  >
-                    {metric.format(value)}
-                  </p>
-                  <p className="text-[11px] text-zinc-500">{metric.label}</p>
-                </div>
-                {accent && (
-                  <div
-                    className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-md"
-                    style={{ backgroundColor: accent }}
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div
+                  className="p-1.5 rounded-md"
+                  style={
+                    accent
+                      ? { backgroundColor: `${accent}20` }
+                      : { backgroundColor: "rgba(161,161,170,0.15)" }
+                  }
+                >
+                  <Icon
+                    className="w-4 h-4"
+                    style={accent ? { color: accent } : { color: "#a1a1aa" }}
                   />
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
+                </div>
+                <span className="text-[11px] font-medium text-emerald-400 flex items-center gap-0.5">
+                  <TrendingUp className="w-3 h-3" />
+                  {metric.trend}
+                </span>
+              </div>
+              <div>
+                <p
+                  className="text-xl font-semibold tabular-nums"
+                  style={accent ? { color: accent } : { color: "#fafafa" }}
+                >
+                  {metric.format(value)}
+                </p>
+                <p className="text-[11px] text-zinc-500">{metric.label}</p>
+              </div>
+              {accent && (
+                <div
+                  className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-md"
+                  style={{ backgroundColor: accent }}
+                />
+              )}
+            </CardContent>
+          </Card>
         )
       })}
     </div>
