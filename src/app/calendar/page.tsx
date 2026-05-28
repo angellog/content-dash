@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   startOfMonth,
   endOfMonth,
@@ -9,7 +9,6 @@ import {
   eachDayOfInterval,
   format,
   isSameMonth,
-  isSameDay,
   isToday,
   addMonths,
   subMonths,
@@ -19,10 +18,8 @@ import { cn } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { useSocialMediaStore } from "@/hooks/useSocialMediaStore";
+import { Platform as SocialPlatform, PostStatus } from "@/types/social";
 
 type Platform =
   | "instagram"
@@ -31,10 +28,13 @@ type Platform =
   | "youtube"
   | "tiktok"
   | "x"
-  | "threads";
+  | "threads"
+  | "pinterest"
+  | "bluesky"
+  | "mastodon";
 
-type ContentStatus = "scheduled" | "published" | "draft";
-type ContentType = "post" | "reel" | "story";
+type ContentStatus = "scheduled" | "published" | "draft" | "backlog";
+type ContentType = "post" | "reel" | "story" | "carousel" | "video" | "short" | "pin";
 
 interface ContentItem {
   id: string;
@@ -57,6 +57,9 @@ const PLATFORM_COLORS: Record<Platform, string> = {
   tiktok: "#000000",
   x: "#1DA1F2",
   threads: "#000000",
+  pinterest: "#BD081C",
+  bluesky: "#0085FF",
+  mastodon: "#6364FF",
 };
 
 interface PlatformFilterConfig {
@@ -81,35 +84,50 @@ const PLATFORM_FILTERS: PlatformFilterConfig[] = [
 // Mock data – helpers to build dates relative to *now*
 // ---------------------------------------------------------------------------
 
-function buildMockData(): ContentItem[] {
+function buildContentFromStore(
+  storePosts: Record<string, import("@/types/social").Post[]>
+): ContentItem[] {
+  const items: ContentItem[] = [];
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth();
+  let dayIdx = 2;
 
-  const d = (day: number) => new Date(y, m, day);
+  for (const [platform, posts] of Object.entries(storePosts)) {
+    for (const post of posts) {
+      let date: Date;
+      if (post.scheduledDate) {
+        const parts = post.scheduledDate.split("-");
+        date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      } else {
+        date = new Date(y, m, dayIdx);
+        dayIdx = ((dayIdx - 1 + 3) % 28) + 1;
+      }
 
-  return [
-    { id: "1", title: "Product Launch Teaser", platform: "instagram", date: d(2), status: "published", type: "reel" },
-    { id: "2", title: "Behind the Scenes", platform: "instagram", date: d(5), status: "scheduled", type: "story" },
-    { id: "3", title: "Weekly Tips #12", platform: "facebook", date: d(3), status: "published", type: "post" },
-    { id: "4", title: "Industry Report Share", platform: "linkedin", date: d(4), status: "scheduled", type: "post" },
-    { id: "5", title: "Tutorial: Getting Started", platform: "youtube", date: d(6), status: "draft", type: "post" },
-    { id: "6", title: "Quick Tip: Shortcuts", platform: "tiktok", date: d(8), status: "scheduled", type: "reel" },
-    { id: "7", title: "Community Poll", platform: "x", date: d(9), status: "published", type: "post" },
-    { id: "8", title: "Thread: Top 10 Tools", platform: "threads", date: d(10), status: "scheduled", type: "post" },
-    { id: "9", title: "Customer Spotlight", platform: "instagram", date: d(12), status: "draft", type: "post" },
-    { id: "10", title: "Live Q&A Announcement", platform: "facebook", date: d(14), status: "scheduled", type: "post" },
-    { id: "11", title: "Case Study Carousel", platform: "linkedin", date: d(15), status: "scheduled", type: "post" },
-    { id: "12", title: "Product Demo Video", platform: "youtube", date: d(17), status: "draft", type: "reel" },
-    { id: "13", title: "Dance Challenge", platform: "tiktok", date: d(18), status: "scheduled", type: "reel" },
-    { id: "14", title: "Feature Announcement", platform: "x", date: d(20), status: "published", type: "post" },
-    { id: "15", title: "AMA Recap Thread", platform: "threads", date: d(21), status: "draft", type: "post" },
-    { id: "16", title: "Team Photo Dump", platform: "instagram", date: d(22), status: "scheduled", type: "post" },
-    { id: "17", title: "Webinar Promo", platform: "linkedin", date: d(24), status: "scheduled", type: "post" },
-    { id: "18", title: "Meme Monday", platform: "facebook", date: d(10), status: "published", type: "post" },
-    { id: "19", title: "Unboxing Short", platform: "youtube", date: d(26), status: "draft", type: "reel" },
-    { id: "20", title: "End-of-Month Wrap", platform: "instagram", date: d(28), status: "scheduled", type: "story" },
-  ];
+      items.push({
+        id: post.id,
+        title: post.caption.slice(0, 40) + (post.caption.length > 40 ? "..." : ""),
+        platform: platform as Platform,
+        date,
+        status: post.status as ContentStatus,
+        type: (post.type.toLowerCase() === "reel"
+          ? "reel"
+          : post.type.toLowerCase() === "story"
+            ? "story"
+            : post.type.toLowerCase() === "carousel"
+              ? "carousel"
+              : post.type.toLowerCase() === "video"
+                ? "video"
+                : post.type.toLowerCase() === "short"
+                  ? "short"
+                  : post.type.toLowerCase() === "pin"
+                    ? "pin"
+                    : "post") as ContentType,
+      });
+    }
+  }
+
+  return items;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,6 +142,8 @@ function statusClasses(status: ContentStatus): string {
       return "bg-sky-500/20 text-sky-400";
     case "draft":
       return "bg-zinc-500/20 text-zinc-400";
+    default:
+      return "bg-zinc-500/20 text-zinc-400";
   }
 }
 
@@ -137,8 +157,13 @@ export default function CalendarPage() {
     new Set(["all"])
   );
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
+  const { posts, fetchPosts } = useSocialMediaStore();
 
-  const allContent = useMemo(() => buildMockData(), []);
+  useEffect(() => {
+    fetchPosts();
+  }, []);
+
+  const allContent = useMemo(() => buildContentFromStore(posts), [posts]);
 
   // ---- filter logic ----
   const toggleFilter = (key: Platform | "all") => {
