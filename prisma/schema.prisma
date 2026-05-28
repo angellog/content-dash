@@ -46,7 +46,7 @@ model NFCCard {
   destinationUrl  String
   isActive        Boolean  @default(true)
   orderStatus     NFCOrderStatus @default(ORDERED)
-  stripeSessionId String?
+  flwTransactionId String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

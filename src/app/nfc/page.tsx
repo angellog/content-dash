@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import {
   Card,
@@ -47,8 +48,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { Suspense } from "react";
 
-export default function SmartNfcCards() {
+function SmartNfcCardsInner() {
   // Configuration Form State
   const [redirectType, setRedirectType] = useState("instagram");
   const [redirectUrl, setRedirectUrl] = useState("https://instagram.com/mybusiness");
@@ -59,7 +61,15 @@ export default function SmartNfcCards() {
   const [cardColor, setCardColor] = useState("matte-black");
   const [businessLogoName, setBusinessLogoName] = useState("");
   const [cardQuantity, setCardQuantity] = useState(1);
-  const [checkoutStep, setCheckoutStep] = useState("form"); // form | success
+  const [checkoutStep, setCheckoutStep] = useState("form");
+  const [isPaying, setIsPaying] = useState(false);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("payment_callback") === "true" && searchParams.get("status") === "successful") {
+      setCheckoutStep("success");
+    }
+  }, [searchParams]);
 
   // Mock stats
   const [activeCards, setActiveCards] = useState([
@@ -133,24 +143,41 @@ export default function SmartNfcCards() {
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsPaying(true);
+
+    const targetUrl = redirectType === "whatsapp"
+      ? `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`
+      : redirectUrl;
+
     try {
-      await fetch("/api/nfc/cards", {
+      const res = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          cardColor,
+          quantity: cardQuantity,
           cardName: businessLogoName || `NFC Card - ${cardColor}`,
           redirectType: redirectType.toUpperCase(),
-          targetUrl: redirectType === "whatsapp"
-            ? `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`
-            : redirectUrl,
-          isActive: true,
+          targetUrl,
         }),
       });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.paymentLink) {
+          window.open(data.paymentLink, "_blank");
+          toast.success("Payment window opened. Complete payment to finalize your order.");
+        } else {
+          toast.error("No payment link received.");
+        }
+      } else {
+        toast.error("Payment gateway not available. Please try again later.");
+      }
     } catch {
-      toast.error("Failed to create NFC card order.");
+      toast.error("Failed to initiate payment.");
+    } finally {
+      setIsPaying(false);
     }
-    setCheckoutStep("success");
-    toast.success("NFC card order placed successfully!");
   };
 
   // Helper to determine active preview URL based on selections
@@ -614,7 +641,7 @@ export default function SmartNfcCards() {
                       <div className="space-y-2 pt-4 border-t border-zinc-800/80">
                         <div className="flex justify-between text-xs">
                           <span className="text-zinc-400">Physical Cards Subtotal:</span>
-                          <span className="text-white font-mono">${(cardQuantity === 1 ? 29 : cardQuantity === 3 ? 69 : cardQuantity === 5 ? 99 : 149).toFixed(2)}</span>
+                          <span className="text-white font-mono">${(29.99 * cardQuantity).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-xs">
                           <span className="text-zinc-400">NFC Cloud Connection:</span>
@@ -622,7 +649,7 @@ export default function SmartNfcCards() {
                         </div>
                         <div className="flex justify-between text-sm font-bold border-t border-zinc-850 pt-2 text-white">
                           <span>Total to Pay:</span>
-                          <span>${(cardQuantity === 1 ? 29 : cardQuantity === 3 ? 69 : cardQuantity === 5 ? 99 : 149).toFixed(2)}</span>
+                          <span>${(29.99 * cardQuantity).toFixed(2)}</span>
                         </div>
                       </div>
                     </div>
@@ -633,10 +660,10 @@ export default function SmartNfcCards() {
                 <CardFooter className="border-t border-zinc-800 p-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-zinc-950/20">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="size-5 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-zinc-500">Secure Stripe Checkout. 30-Day Money Back Satisfaction Guarantee.</span>
+                    <span className="text-xs text-zinc-500">Secure Flutterwave Checkout. 30-Day Money Back Satisfaction Guarantee.</span>
                   </div>
-                  <Button type="submit" size="lg" className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white">
-                    Submit NFC Order & Generate QR
+                  <Button type="submit" size="lg" disabled={isPaying} className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white">
+                    {isPaying ? "Opening Payment..." : "Submit NFC Order & Generate QR"}
                   </Button>
                 </CardFooter>
               </form>
@@ -665,5 +692,13 @@ export default function SmartNfcCards() {
         </section>
       </main>
     </>
+  );
+}
+
+export default function SmartNfcCards() {
+  return (
+    <Suspense>
+      <SmartNfcCardsInner />
+    </Suspense>
   );
 }
