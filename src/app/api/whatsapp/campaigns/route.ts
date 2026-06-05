@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { whatsappCampaignPostSchema, validateBody } from "@/lib/validations/schemas";
 
 export async function GET(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -26,8 +27,9 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  if (!body.campaignName || !body.mediaUrl || !body.scheduledAt) {
-    return NextResponse.json({ error: "campaignName, mediaUrl, scheduledAt required" }, { status: 400 });
+  const parsed = validateBody(whatsappCampaignPostSchema, body);
+  if ("error" in parsed) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
   const { data, error } = await supabase
@@ -35,11 +37,9 @@ export async function POST(req: NextRequest) {
     .insert({
       id: crypto.randomUUID(),
       userId: user.id,
-      campaignName: body.campaignName,
-      mediaUrl: body.mediaUrl,
-      caption: body.caption || null,
-      redirectUrl: body.redirectUrl || null,
-      scheduledAt: body.scheduledAt,
+      ...parsed.data,
+      caption: parsed.data.caption || null,
+      redirectUrl: parsed.data.redirectUrl || null,
     })
     .select()
     .single();

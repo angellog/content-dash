@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { LayoutGrid, Grid3X3, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -19,6 +19,7 @@ import { NewPostDialog } from "@/components/social-manager/new-post-dialog";
 import { PlatformStats } from "@/components/social-manager/platform-stats";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 
 const STATUS_COLUMNS = [
   {
@@ -48,6 +49,7 @@ const STATUS_COLUMNS = [
 ];
 
 function SocialManagerContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const {
     activePlatform,
@@ -70,9 +72,36 @@ function SocialManagerContent() {
   const [platformStatusTab, setPlatformStatusTab] =
     useState<PostStatus>("scheduled");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [followerCounts, setFollowerCounts] = useState<Record<Platform, number | null>>(
+    {} as Record<Platform, number | null>
+  );
 
   useEffect(() => {
-    fetchPosts();
+    fetchPosts().catch(() => {
+      toast.error("Failed to load posts.");
+    });
+  }, []);
+
+  useEffect(() => {
+    async function loadFollowerCounts() {
+      try {
+        const res = await fetch("/api/omnisocial/accounts");
+        if (res.ok) {
+          const data = await res.json();
+          const accounts = data.accounts ?? data.data ?? [];
+          const counts: Record<Platform, number | null> = {} as Record<Platform, number | null>;
+          for (const acc of accounts) {
+            if (acc.platform && acc.followersCount != null) {
+              counts[acc.platform as Platform] = acc.followersCount;
+            }
+          }
+          setFollowerCounts(counts);
+        }
+      } catch {
+        setFollowerCounts({} as Record<Platform, number | null>);
+      }
+    }
+    loadFollowerCounts();
   }, []);
 
   useEffect(() => {
@@ -94,11 +123,9 @@ function SocialManagerContent() {
     if (activePlatform !== "all") params.set("platform", activePlatform);
     if (viewMode !== "status") params.set("view", viewMode);
     const qs = params.toString();
-    const url = qs
-      ? `${window.location.pathname}?${qs}`
-      : window.location.pathname;
-    window.history.replaceState(null, "", url);
-  }, [activePlatform, viewMode]);
+    const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    router.replace(url);
+  }, [activePlatform, viewMode, router]);
 
   const stats = useMemo(() => {
     if (activePlatform === "all") {
@@ -110,11 +137,16 @@ function SocialManagerContent() {
       const engagementRate = published.length > 0
         ? Math.round(((totalLikes + totalComments) / published.length / 100) * 10) / 10
         : 0;
+      const totalFollowers = Object.values(followerCounts).reduce(
+        (sum: number, c: number | null) => sum + (c ?? 0),
+        0
+      );
+      const hasAny = Object.values(followerCounts).some((c) => c != null);
       return {
         totalPosts: allPosts.length,
         scheduled,
         engagementRate,
-        followerCount: 24800,
+        followerCount: hasAny ? totalFollowers : null,
       };
     }
     const platformPosts = posts[activePlatform] ?? [];
@@ -125,18 +157,14 @@ function SocialManagerContent() {
     const engagementRate = published.length > 0
       ? Math.round(((totalLikes + totalComments) / published.length / 100) * 10) / 10
       : 0;
-    const followerMap: Record<Platform, number> = {
-      instagram: 10465, facebook: 2624, linkedin: 216, threads: 423,
-      tiktok: 2624, youtube: 1200, pinterest: 890, bluesky: 340,
-      mastodon: 156, x: 5200,
-    };
+    const count = followerCounts[activePlatform];
     return {
       totalPosts: platformPosts.length,
       scheduled,
       engagementRate,
-      followerCount: followerMap[activePlatform] ?? 0,
+      followerCount: count ?? null,
     };
-  }, [activePlatform, posts, getAllPosts]);
+  }, [activePlatform, posts, getAllPosts, followerCounts]);
 
   const handlePostCreated = useCallback(
     (platform: Platform, post: Omit<Post, "id">) => {
@@ -153,15 +181,24 @@ function SocialManagerContent() {
               (posts[p] ?? []).some((post: Post) => post.id === id)
             ) ?? PLATFORMS[0])
           : activePlatform;
-      deletePost(platformKey, id);
+      try {
+        deletePost(platformKey, id);
+      } catch {
+        toast.error("Failed to delete post.");
+      }
     },
     [activePlatform, deletePost, posts]
   );
 
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
-    await syncFromOmniSocial();
-    setIsSyncing(false);
+    try {
+      await syncFromOmniSocial();
+    } catch {
+      toast.error("Sync failed.");
+    } finally {
+      setIsSyncing(false);
+    }
   }, [syncFromOmniSocial]);
 
   const platformViewPosts = useMemo(() => {
@@ -272,7 +309,13 @@ function SocialManagerContent() {
       </div>
 
       <div className="mb-6">
-        <PlatformStats platform={activePlatform} stats={stats} />
+        <PlatformStats
+          platform={activePlatform}
+          stats={{
+            ...stats,
+            followerCount: stats.followerCount ?? "\u2014",
+          }}
+        />
       </div>
 
       {viewMode === "status" ? (

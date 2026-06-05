@@ -13,6 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useSocialMediaStore } from "@/hooks/useSocialMediaStore";
 import {
   Home,
   Share2,
@@ -40,9 +41,6 @@ const navItems = [
   { label: "NFC Cards", href: "/nfc", icon: CreditCard },
   { label: "OpenClaw", href: "/openclaw", icon: Sparkles, pro: true },
 ];
-
-// Simulated connection status — in production this would come from a store/API
-const isConnected = true;
 
 function SidebarBrand() {
   return (
@@ -91,6 +89,8 @@ function NavLink({
 }
 
 function ConnectionStatus() {
+  const isConnected = useSocialMediaStore((s) => s.syncState.isLive);
+
   return (
     <div className="px-4 py-3">
       <div className="flex items-center gap-2 text-xs">
@@ -156,7 +156,6 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-/** Mobile trigger button — exported so Header can use it */
 export function MobileMenuTrigger({
   onClick,
 }: {
@@ -180,14 +179,12 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 bg-zinc-950 border-r border-zinc-800">
         <SidebarBrand />
         <Separator className="bg-zinc-800" />
         <SidebarNav />
       </aside>
 
-      {/* Mobile sidebar via Sheet */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side="left"
@@ -203,8 +200,6 @@ export function Sidebar() {
         </SheetContent>
       </Sheet>
 
-      {/* Floating mobile trigger — fixed bottom-left for standalone use;
-          Header also renders its own trigger via MobileMenuTrigger */}
       <button
         onClick={() => setMobileOpen(true)}
         className="fixed bottom-4 left-4 z-40 flex size-12 items-center justify-center rounded-full bg-zinc-800 text-white shadow-lg lg:hidden"

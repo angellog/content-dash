@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useSocialMediaStore } from "@/hooks/useSocialMediaStore";
+import { Platform } from "@/types/social";
 import Link from "next/link";
 
 interface OmniStatus {
@@ -38,8 +39,11 @@ interface OmniStatus {
 interface DashboardStats {
   totalPosts: number;
   engagementRate: number;
-  followerGrowth: number;
+  followerGrowth: number | null;
   connectedPlatforms: number;
+  totalPostsTrend: string | null;
+  engagementTrend: string | null;
+  followerGrowthTrend: string | null;
 }
 
 export default function Home() {
@@ -47,11 +51,15 @@ export default function Home() {
     connected: false,
     status: "NOT_CONFIGURED",
   });
+  const [configError, setConfigError] = useState<string | null>(null);
   const [dashStats, setDashStats] = useState<DashboardStats>({
     totalPosts: 0,
     engagementRate: 0,
-    followerGrowth: 0,
+    followerGrowth: null,
     connectedPlatforms: 0,
+    totalPostsTrend: null,
+    engagementTrend: null,
+    followerGrowthTrend: null,
   });
   const [recentActivity, setRecentActivity] = useState<
     { id: string; action: string; detail: string; time: string }[]
@@ -67,13 +75,21 @@ export default function Home() {
       } = await supabase.auth.getUser();
       if (user) setUserEmail(user.email ?? null);
 
-      const configRes = await fetch("/api/omnisocial/config");
-      if (configRes.ok) {
-        const data = await configRes.json();
-        setOmniStatus(data);
+      try {
+        const configRes = await fetch("/api/omnisocial/config");
+        if (configRes.ok) {
+          const data = await configRes.json();
+          setOmniStatus(data);
+        } else {
+          setConfigError("Failed to load config");
+        }
+      } catch {
+        setConfigError("Failed to connect to config service");
       }
 
-      await fetchPosts();
+      try {
+        await fetchPosts();
+      } catch {}
 
       const allPosts = Object.values(useSocialMediaStore.getState().posts).flat();
       const published = allPosts.filter((p) => p.status === "published");
@@ -84,11 +100,65 @@ export default function Home() {
           ? Math.round(((totalLikes + totalComments) / published.length / 100) * 10) / 10
           : 0;
 
+      const platforms = new Set<Platform>(allPosts.map((p) => p.platform));
+      const connectedPlatforms = platforms.size;
+
+      let followerGrowth: number | null = null;
+      let followerGrowthTrend: string | null = null;
+      let engagementTrend: string | null = null;
+      let totalPostsTrend: string | null = null;
+
+      try {
+        const analyticsRes = await fetch("/api/omnisocial/analytics");
+        if (analyticsRes.ok) {
+          const analytics = await analyticsRes.json();
+          if (analytics.followers) {
+            const followersData = analytics.followers as Record<
+              Platform,
+              { count: number; change: number }
+            >;
+            const totalChange = Object.values(followersData).reduce(
+              (sum, f) => sum + f.change,
+              0
+            );
+            const totalCount = Object.values(followersData).reduce(
+              (sum, f) => sum + f.count,
+              0
+            );
+            followerGrowth = totalChange;
+            if (totalCount > 0) {
+              const pct =
+                Math.round((totalChange / (totalCount - totalChange)) * 1000) / 10;
+              followerGrowthTrend = pct >= 0 ? `+${pct}%` : `${pct}%`;
+            }
+          }
+          if (
+            analytics.engagement_rate &&
+            Array.isArray(analytics.engagement_rate) &&
+            analytics.engagement_rate.length >= 2
+          ) {
+            const rates = analytics.engagement_rate as {
+              date: string;
+              value: number;
+            }[];
+            const latest = rates[rates.length - 1].value;
+            const prev = rates[rates.length - 2].value;
+            if (prev > 0) {
+              const diff = Math.round(((latest - prev) / prev) * 1000) / 10;
+              engagementTrend = diff >= 0 ? `+${diff}%` : `${diff}%`;
+            }
+          }
+        }
+      } catch {}
+
       setDashStats({
         totalPosts: allPosts.length,
         engagementRate,
-        followerGrowth: 1247,
-        connectedPlatforms: 4,
+        followerGrowth,
+        connectedPlatforms,
+        totalPostsTrend,
+        engagementTrend,
+        followerGrowthTrend,
       });
 
       const recent = published.slice(0, 5).map((p) => ({
@@ -110,21 +180,24 @@ export default function Home() {
       value: String(dashStats.totalPosts),
       description: "Across all platforms",
       icon: CalendarDays,
-      trend: "+12%",
+      trend: dashStats.totalPostsTrend ?? "\u2014",
     },
     {
       title: "Engagement Rate",
       value: `${dashStats.engagementRate}%`,
       description: "Across all platforms",
       icon: TrendingUp,
-      trend: dashStats.engagementRate > 4 ? "+0.6%" : null,
+      trend: dashStats.engagementTrend ?? "\u2014",
     },
     {
       title: "Follower Growth",
-      value: `+${dashStats.followerGrowth.toLocaleString()}`,
+      value:
+        dashStats.followerGrowth !== null
+          ? `+${dashStats.followerGrowth.toLocaleString()}`
+          : "\u2014",
       description: "Last 30 days",
       icon: Users,
-      trend: "+8.3%",
+      trend: dashStats.followerGrowthTrend ?? "\u2014",
     },
     {
       title: "Connected Platforms",
@@ -174,6 +247,7 @@ export default function Home() {
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {stats.map((stat) => {
             const Icon = stat.icon;
+            const isPlaceholder = stat.trend === "\u2014";
             return (
               <Card key={stat.title} className="border-zinc-800 bg-zinc-900">
                 <CardHeader>
@@ -190,7 +264,14 @@ export default function Home() {
                 <CardContent>
                   <div className="flex items-center gap-2 text-xs">
                     {stat.trend && (
-                      <Badge variant="secondary" className="bg-emerald-600/20 text-emerald-400">
+                      <Badge
+                        variant="secondary"
+                        className={
+                          isPlaceholder
+                            ? "bg-zinc-700/40 text-zinc-500"
+                            : "bg-emerald-600/20 text-emerald-400"
+                        }
+                      >
                         {stat.trend}
                       </Badge>
                     )}
@@ -272,24 +353,42 @@ export default function Home() {
                   className={`flex items-center gap-3 rounded-lg border p-3 ${
                     omniStatus.connected
                       ? "border-emerald-900/50 bg-emerald-950/30"
-                      : "border-amber-900/50 bg-amber-950/30"
+                      : configError
+                        ? "border-red-900/50 bg-red-950/30"
+                        : "border-amber-900/50 bg-amber-950/30"
                   }`}
                 >
                   {omniStatus.connected ? (
                     <Wifi className="size-5 text-emerald-500" />
+                  ) : configError ? (
+                    <WifiOff className="size-5 text-red-500" />
                   ) : (
                     <WifiOff className="size-5 text-amber-500" />
                   )}
                   <div>
-                    <p className={`text-sm font-medium ${omniStatus.connected ? "text-emerald-400" : "text-amber-400"}`}>
-                      {omniStatus.connected ? "Connected" : "Demo Mode"}
+                    <p
+                      className={`text-sm font-medium ${
+                        omniStatus.connected
+                          ? "text-emerald-400"
+                          : configError
+                            ? "text-red-400"
+                            : "text-amber-400"
+                      }`}
+                    >
+                      {omniStatus.connected
+                        ? "Connected"
+                        : configError
+                          ? "Connection Error"
+                          : "Demo Mode"}
                     </p>
                     <p className="text-xs text-zinc-500">
                       {omniStatus.connected
                         ? omniStatus.connectionType === "mcp_url"
                           ? "MCP URL"
                           : "All services operational"
-                        : "Connect in Settings for live data"}
+                        : configError
+                          ? configError
+                          : "Connect in Settings for live data"}
                     </p>
                   </div>
                 </div>

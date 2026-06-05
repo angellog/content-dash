@@ -5,7 +5,8 @@ export async function executeTool(
   args: Record<string, unknown>,
   omniSocialApiKey: string,
   supabaseUrl: string,
-  supabaseServiceKey: string
+  supabaseServiceKey: string,
+  userId: string
 ): Promise<string> {
   try {
     switch (toolName) {
@@ -14,13 +15,13 @@ export async function executeTool(
       case "post_to_omnisocial":
         return await executePostToOmniSocial(args, omniSocialApiKey);
       case "create_whatsapp_campaign":
-        return await executeCreateCampaign(args, supabaseUrl, supabaseServiceKey);
+        return await executeCreateCampaign(args, supabaseUrl, supabaseServiceKey, userId);
       case "add_competitor":
-        return await executeAddCompetitor(args, supabaseUrl, supabaseServiceKey);
+        return await executeAddCompetitor(args, supabaseUrl, supabaseServiceKey, userId);
       case "get_analytics":
         return await executeGetAnalytics(args, omniSocialApiKey);
       case "manage_nfc_card":
-        return await executeManageNfcCard(args, supabaseUrl, supabaseServiceKey);
+        return await executeManageNfcCard(args, supabaseUrl, supabaseServiceKey, userId);
       default:
         return `Unknown tool: ${toolName}`;
     }
@@ -88,7 +89,8 @@ async function executePostToOmniSocial(
 async function executeCreateCampaign(
   args: Record<string, unknown>,
   supabaseUrl: string,
-  serviceKey: string
+  serviceKey: string,
+  userId: string
 ): Promise<string> {
   const res = await fetch(`${supabaseUrl}/rest/v1/WhatsAppBillboardCampaign`, {
     method: "POST",
@@ -100,6 +102,7 @@ async function executeCreateCampaign(
     },
     body: JSON.stringify({
       id: crypto.randomUUID(),
+      userId,
       campaignName: args.campaignName,
       caption: args.caption,
       mediaUrl: args.mediaUrl ?? "",
@@ -118,7 +121,8 @@ async function executeCreateCampaign(
 async function executeAddCompetitor(
   args: Record<string, unknown>,
   supabaseUrl: string,
-  serviceKey: string
+  serviceKey: string,
+  userId: string
 ): Promise<string> {
   const res = await fetch(`${supabaseUrl}/rest/v1/CompetitorWatch`, {
     method: "POST",
@@ -130,6 +134,7 @@ async function executeAddCompetitor(
     },
     body: JSON.stringify({
       id: crypto.randomUUID(),
+      userId,
       brandName: args.brandName,
       handleInstagram: args.handleInstagram || null,
       handleYoutube: args.handleYoutube || null,
@@ -175,7 +180,8 @@ async function executeGetAnalytics(
 async function executeManageNfcCard(
   args: Record<string, unknown>,
   supabaseUrl: string,
-  serviceKey: string
+  serviceKey: string,
+  userId: string
 ): Promise<string> {
   const res = await fetch(`${supabaseUrl}/rest/v1/NFCCard`, {
     method: "POST",
@@ -187,9 +193,10 @@ async function executeManageNfcCard(
     },
     body: JSON.stringify({
       id: crypto.randomUUID(),
+      userId,
       cardName: args.cardName,
       redirectType: (args.redirectType as string).toUpperCase(),
-      destinationUrl: args.targetUrl,
+      destinationUrl: args.destinationUrl,
       cardSlug: `card-${Date.now().toString(36)}`,
       isActive: args.isActive ?? true,
     }),
@@ -199,5 +206,5 @@ async function executeManageNfcCard(
     return `Failed to create NFC card: ${res.status}`;
   }
 
-  return `NFC card "${args.cardName}" created. Redirect: ${args.redirectType} → ${args.targetUrl}`;
+  return `NFC card "${args.cardName}" created. Redirect: ${args.redirectType} → ${args.destinationUrl}`;
 }

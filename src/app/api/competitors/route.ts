@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { competitorPostSchema, validateBody } from "@/lib/validations/schemas";
 
 export async function GET(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -26,19 +27,22 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  if (!body.brandName) return NextResponse.json({ error: "brandName required" }, { status: 400 });
+  const parsed = validateBody(competitorPostSchema, body);
+  if ("error" in parsed) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
 
   const { data, error } = await supabase
     .from("CompetitorWatch")
     .insert({
       id: crypto.randomUUID(),
       userId: user.id,
-      brandName: body.brandName,
-      handleInstagram: body.handleInstagram || null,
-      handleYoutube: body.handleYoutube || null,
-      handleTiktok: body.handleTiktok || null,
-      handleX: body.handleX || null,
-      handleLinkedin: body.handleLinkedin || null,
+      ...parsed.data,
+      handleInstagram: parsed.data.handleInstagram || null,
+      handleYoutube: parsed.data.handleYoutube || null,
+      handleTiktok: parsed.data.handleTiktok || null,
+      handleX: parsed.data.handleX || null,
+      handleLinkedin: parsed.data.handleLinkedin || null,
     })
     .select()
     .single();
@@ -47,22 +51,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(data, { status: 201 });
 }
 
-export async function DELETE(req: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { id } = await req.json();
-  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-
-  const { error } = await supabase
-    .from("CompetitorWatch")
-    .delete()
-    .eq("id", id)
-    .eq("userId", user.id);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+export async function DELETE(_req: NextRequest) {
+  return NextResponse.json({ error: "Use DELETE /api/competitors/[id]" }, { status: 400 });
 }

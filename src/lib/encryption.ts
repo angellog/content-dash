@@ -7,9 +7,10 @@ const AUTH_TAG_LENGTH = 16;
 function getDerivedKey(): Buffer {
   const secret = process.env.OMNISOCIAL_ENCRYPTION_KEY;
   if (!secret || secret.length < 16) {
-    throw new Error("ENCRYPTION_KEY env var must be set (min 16 chars)");
+    throw new Error("OMNISOCIAL_ENCRYPTION_KEY env var must be set (min 16 chars)");
   }
-  return scryptSync(secret, "contentdash-salt-v1", 32);
+  const salt = process.env.ENCRYPTION_SALT || process.env.NEXT_PUBLIC_APP_URL || "contentdash-default-salt";
+  return scryptSync(secret, salt, 32);
 }
 
 export function encrypt(plaintext: string): string {

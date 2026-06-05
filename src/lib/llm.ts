@@ -18,6 +18,14 @@ export interface LLMResponse {
   finishReason: string;
 }
 
+export interface AgentMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  toolCallId?: string;
+  toolCallName?: string;
+  toolCalls?: ToolCall[];
+}
+
 const SYSTEM_PROMPT = `You are the OpenClaw AI agent for ContentDash — a content management dashboard powered by OmniSocial.
 
 Your role: Receive natural language commands (often from WhatsApp) and execute them by calling the appropriate tools.
@@ -43,7 +51,7 @@ export { SYSTEM_PROMPT };
 export async function callLLM(
   provider: LLMProvider,
   apiKey: string,
-  messages: { role: "system" | "user" | "assistant" | "tool"; content: string; toolCallId?: string }[],
+  messages: AgentMessage[],
   tools: ToolDefinition[]
 ): Promise<LLMResponse> {
   switch (provider) {
@@ -60,7 +68,7 @@ export async function callLLM(
 
 async function callOpenAI(
   apiKey: string,
-  messages: { role: string; content: string; toolCallId?: string }[],
+  messages: AgentMessage[],
   tools: ToolDefinition[]
 ): Promise<LLMResponse> {
   const openaiTools = tools.map((t) => ({
@@ -72,6 +80,34 @@ async function callOpenAI(
     },
   }));
 
+  const formattedMessages = messages.map((m) => {
+    if (m.role === "assistant" && m.toolCalls?.length) {
+      return {
+        role: "assistant" as const,
+        content: m.content || null,
+        tool_calls: m.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function" as const,
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.arguments),
+          },
+        })),
+      };
+    }
+    if (m.role === "tool") {
+      return {
+        role: "tool" as const,
+        content: m.content,
+        tool_call_id: m.toolCallId,
+      };
+    }
+    return {
+      role: m.role,
+      content: m.content,
+    };
+  });
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -80,11 +116,7 @@ async function callOpenAI(
     },
     body: JSON.stringify({
       model: "gpt-4o",
-      messages: messages.map((m) => ({
-        role: m.role === "tool" ? "tool" : m.role,
-        content: m.content,
-        tool_call_id: m.toolCallId,
-      })),
+      messages: formattedMessages,
       tools: openaiTools.length > 0 ? openaiTools : undefined,
       tool_choice: openaiTools.length > 0 ? "auto" : undefined,
     }),
@@ -115,7 +147,7 @@ async function callOpenAI(
 
 async function callAnthropic(
   apiKey: string,
-  messages: { role: string; content: string; toolCallId?: string }[],
+  messages: AgentMessage[],
   tools: ToolDefinition[]
 ): Promise<LLMResponse> {
   const systemMsg = messages.find((m) => m.role === "system")?.content ?? "";
@@ -129,12 +161,32 @@ async function callAnthropic(
 
   const formattedMessages: Record<string, unknown>[] = [];
   for (const m of nonSystem) {
-    if (m.role === "assistant") {
+    if (m.role === "assistant" && m.toolCalls?.length) {
+      const content: Record<string, unknown>[] = [];
+      if (m.content) {
+        content.push({ type: "text", text: m.content });
+      }
+      for (const tc of m.toolCalls) {
+        content.push({
+          type: "tool_use",
+          id: tc.id,
+          name: tc.name,
+          input: tc.arguments,
+        });
+      }
+      formattedMessages.push({ role: "assistant", content });
+    } else if (m.role === "assistant") {
       formattedMessages.push({ role: "assistant", content: m.content });
     } else if (m.role === "tool") {
       formattedMessages.push({
         role: "user",
-        content: [{ type: "tool_result", tool_use_id: m.toolCallId, content: m.content }],
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: m.toolCallId,
+            content: m.content,
+          },
+        ],
       });
     } else {
       formattedMessages.push({ role: m.role, content: m.content });
@@ -189,25 +241,55 @@ async function callAnthropic(
 
 async function callGemini(
   apiKey: string,
-  messages: { role: string; content: string; toolCallId?: string }[],
+  messages: AgentMessage[],
   tools: ToolDefinition[]
 ): Promise<LLMResponse> {
   const geminiTools = tools.map((t) => ({
-    functionDeclarations: [{
-      name: t.name,
-      description: t.description,
-      parameters: t.parameters,
-    }],
+    functionDeclarations: [
+      {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      },
+    ],
   }));
 
-  const contents = messages
-    .filter((m) => m.role !== "system")
-    .map((m) => ({
-      role: m.role === "assistant" ? "model" : m.role === "tool" ? "user" : "user",
-      parts: [{ text: m.content }],
-    }));
+  const contents: Record<string, unknown>[] = [];
+  for (const m of messages) {
+    if (m.role === "system") continue;
 
-  const systemInstruction = messages.find((m) => m.role === "system")?.content;
+    if (m.role === "assistant" && m.toolCalls?.length) {
+      const parts: Record<string, unknown>[] = [];
+      if (m.content) {
+        parts.push({ text: m.content });
+      }
+      for (const tc of m.toolCalls) {
+        parts.push({
+          functionCall: { name: tc.name, args: tc.arguments },
+        });
+      }
+      contents.push({ role: "model", parts });
+    } else if (m.role === "tool") {
+      contents.push({
+        role: "user",
+        parts: [
+          {
+            functionResponse: {
+              name: m.toolCallName,
+              response: { content: m.content },
+            },
+          },
+        ],
+      });
+    } else if (m.role === "assistant") {
+      contents.push({ role: "model", parts: [{ text: m.content }] });
+    } else {
+      contents.push({ role: "user", parts: [{ text: m.content }] });
+    }
+  }
+
+  const systemInstruction = messages.find((m) => m.role === "system")
+    ?.content;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
@@ -215,7 +297,9 @@ async function callGemini(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+        systemInstruction: systemInstruction
+          ? { parts: [{ text: systemInstruction }] }
+          : undefined,
         contents,
         tools: geminiTools.length > 0 ? geminiTools : undefined,
       }),

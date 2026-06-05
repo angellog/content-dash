@@ -129,10 +129,10 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           type: "string",
           description: "Type: INSTAGRAM, LINK_IN_BIO, CUSTOM_URL, WHATSAPP_CHAT",
         },
-        targetUrl: { type: "string", description: "URL the card redirects to" },
+        destinationUrl: { type: "string", description: "URL the card redirects to" },
         isActive: { type: "boolean", description: "Whether the card is active" },
       },
-      required: ["cardName", "redirectType", "targetUrl"],
+      required: ["cardName", "redirectType", "destinationUrl"],
     },
   },
 ];

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardHeader,
@@ -12,6 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Settings,
   Wifi,
@@ -72,6 +80,7 @@ function extractApiKey(input: string): { apiKey: string; mcpUrl: string | null }
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [config, setConfig] = useState<OmniSocialConfig>({
     connected: false,
     status: "NOT_CONFIGURED",
@@ -95,6 +104,7 @@ export default function SettingsPage() {
   const [twilioAuthToken, setTwilioAuthToken] = useState("");
   const [twilioNumber, setTwilioNumber] = useState("");
   const [savingAgent, setSavingAgent] = useState(false);
+  const [twilioTokenDirty, setTwilioTokenDirty] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -213,21 +223,25 @@ export default function SettingsPage() {
   async function handleSaveAgent() {
     setSavingAgent(true);
     try {
+      const body: Record<string, unknown> = {
+        llmProvider,
+        llmApiKey: llmApiKey || undefined,
+        twilioAccountSid: twilioSid || undefined,
+        twilioWhatsappNumber: twilioNumber || undefined,
+        isActive: true,
+      };
+      if (twilioTokenDirty && twilioAuthToken) {
+        body.twilioAuthToken = twilioAuthToken;
+      }
       const res = await fetch("/api/agent/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          llmProvider,
-          llmApiKey: llmApiKey || undefined,
-          twilioAccountSid: twilioSid || undefined,
-          twilioAuthToken: twilioAuthToken || undefined,
-          twilioWhatsappNumber: twilioNumber || undefined,
-          isActive: true,
-        }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         toast.success("AI Agent configuration saved!");
         setAgentActive(true);
+        setTwilioTokenDirty(false);
       } else {
         toast.error("Failed to save agent configuration.");
       }
@@ -240,8 +254,12 @@ export default function SettingsPage() {
 
   async function handleSignOut() {
     const supabase = createClient();
-    await supabase.auth.signOut();
-    window.location.href = "/login";
+    try {
+      await supabase.auth.signOut();
+      router.push("/login");
+    } catch {
+      toast.error("Failed to sign out.");
+    }
   }
 
   if (loading) {
@@ -405,7 +423,7 @@ export default function SettingsPage() {
                     <a
                       href="https://omnisocials.com"
                       target="_blank"
-                      rel="noopener"
+                      rel="noopener noreferrer"
                       className="underline underline-offset-2 hover:text-zinc-300"
                     >
                       omnisocials.com
@@ -428,15 +446,16 @@ export default function SettingsPage() {
           <CardContent className="space-y-5">
             <div className="space-y-2">
               <Label className="text-zinc-300 text-sm">LLM Provider</Label>
-              <select
-                value={llmProvider}
-                onChange={(e) => setLlmProvider(e.target.value)}
-                className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-indigo-500 focus:outline-none"
-              >
-                <option value="openai">OpenAI (GPT-4o)</option>
-                <option value="anthropic">Anthropic (Claude Sonnet)</option>
-                <option value="gemini">Google (Gemini 2.0 Flash)</option>
-              </select>
+              <Select value={llmProvider} onValueChange={(v) => v && setLlmProvider(v)}>
+                <SelectTrigger className="w-full border-zinc-700 bg-zinc-800 text-zinc-200">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai">OpenAI (GPT-4o)</SelectItem>
+                  <SelectItem value="anthropic">Anthropic (Claude Sonnet)</SelectItem>
+                  <SelectItem value="gemini">Google (Gemini 2.0 Flash)</SelectItem>
+                </SelectContent>
+              </Select>
               <p className="text-xs text-zinc-500">Choose your preferred AI model. You bring your own API key.</p>
             </div>
 
@@ -476,7 +495,10 @@ export default function SettingsPage() {
                   type="password"
                   placeholder="Your Twilio auth token"
                   value={twilioAuthToken}
-                  onChange={(e) => setTwilioAuthToken(e.target.value)}
+                  onChange={(e) => {
+                    setTwilioAuthToken(e.target.value);
+                    setTwilioTokenDirty(true);
+                  }}
                   className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
                 />
               </div>
@@ -506,9 +528,17 @@ export default function SettingsPage() {
                 <Button
                   variant="outline"
                   onClick={async () => {
-                    await fetch("/api/agent/config", { method: "DELETE" });
-                    setAgentActive(false);
-                    toast.success("Agent deactivated.");
+                    try {
+                      const res = await fetch("/api/agent/config", { method: "DELETE" });
+                      if (res.ok) {
+                        setAgentActive(false);
+                        toast.success("Agent deactivated.");
+                      } else {
+                        toast.error("Failed to deactivate agent.");
+                      }
+                    } catch {
+                      toast.error("Failed to deactivate agent.");
+                    }
                   }}
                   className="border-zinc-700 text-zinc-400 hover:text-red-400"
                 >

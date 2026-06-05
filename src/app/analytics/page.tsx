@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -30,60 +30,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-
-// ---------------------------------------------------------------------------
-// Mock data generators
-// ---------------------------------------------------------------------------
-
-function generateDailyData(days: number) {
-  const data: {
-    date: string;
-    impressions: number;
-    engagementRate: number;
-    followers: number;
-  }[] = [];
-
-  const baseImpressions = 6500;
-  const baseEngagement = 4.2;
-  const baseFollowers = 48200;
-
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-
-    const dayOfWeek = d.getDay();
-    const weekendBoost = dayOfWeek === 0 || dayOfWeek === 6 ? 1.15 : 1;
-    const trendMultiplier = 1 + ((days - i) / days) * 0.25;
-    const noise = 0.85 + Math.random() * 0.35;
-
-    data.push({
-      date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      impressions: Math.round(
-        baseImpressions * weekendBoost * trendMultiplier * noise
-      ),
-      engagementRate: +(
-        baseEngagement * (1 + ((days - i) / days) * 0.15) +
-        (Math.random() - 0.4) * 0.8
-      ).toFixed(2),
-      followers: Math.round(
-        baseFollowers + ((days - i) / days) * 1247 + Math.random() * 60
-      ),
-    });
-  }
-
-  return data;
-}
-
-const dailyData = generateDailyData(30);
-
-const platformData = [
-  { platform: "Instagram", engagement: 6.2, fill: "#E1306C" },
-  { platform: "TikTok", engagement: 5.8, fill: "#00F2EA" },
-  { platform: "LinkedIn", engagement: 3.9, fill: "#0A66C2" },
-  { platform: "Facebook", engagement: 3.1, fill: "#1877F2" },
-  { platform: "X", engagement: 2.4, fill: "#A1A1AA" },
-  { platform: "Threads", engagement: 1.7, fill: "#FFFFFF" },
-];
+import { PLATFORM_CONFIG, type Platform, type AnalyticsData } from "@/lib/omnisocial";
 
 const platformColors: Record<string, string> = {
   Instagram: "bg-pink-600",
@@ -94,80 +41,44 @@ const platformColors: Record<string, string> = {
   Threads: "bg-white text-zinc-900",
 };
 
-const topPosts = [
-  {
-    rank: 1,
-    preview: "Behind the scenes of our latest product launch event...",
-    platform: "Instagram",
-    impressions: 42_310,
-    likes: 3_842,
-    comments: 287,
-    engagementRate: 9.8,
-  },
-  {
-    rank: 2,
-    preview: "5 productivity tips that actually work in 2026 (thread)",
-    platform: "X",
-    impressions: 38_920,
-    likes: 2_115,
-    comments: 194,
-    engagementRate: 5.9,
-  },
-  {
-    rank: 3,
-    preview: "Announcing our Series B funding — here's what it means",
-    platform: "LinkedIn",
-    impressions: 35_640,
-    likes: 4_201,
-    comments: 312,
-    engagementRate: 12.7,
-  },
-  {
-    rank: 4,
-    preview: "Day in the life at our new HQ office tour",
-    platform: "TikTok",
-    impressions: 31_780,
-    likes: 5_680,
-    comments: 423,
-    engagementRate: 19.2,
-  },
-  {
-    rank: 5,
-    preview: "Customer spotlight: How @acmecorp grew 300% with us",
-    platform: "Facebook",
-    impressions: 28_450,
-    likes: 1_230,
-    comments: 89,
-    engagementRate: 4.6,
-  },
-  {
-    rank: 6,
-    preview: "The remote work debate is missing this one key point...",
-    platform: "Threads",
-    impressions: 24_190,
-    likes: 1_870,
-    comments: 156,
-    engagementRate: 8.4,
-  },
-  {
-    rank: 7,
-    preview: "New feature drop: real-time collaboration is here",
-    platform: "Instagram",
-    impressions: 21_600,
-    likes: 2_340,
-    comments: 201,
-    engagementRate: 11.8,
-  },
-  {
-    rank: 8,
-    preview: "Our CEO's keynote at TechSummit 2026 full recap",
-    platform: "LinkedIn",
-    impressions: 18_940,
-    likes: 1_980,
-    comments: 147,
-    engagementRate: 11.2,
-  },
-];
+function platformFill(name: string): string {
+  const map: Record<string, string> = {
+    Instagram: "#E1306C",
+    TikTok: "#00F2EA",
+    LinkedIn: "#0A66C2",
+    Facebook: "#1877F2",
+    X: "#A1A1AA",
+    Threads: "#FFFFFF",
+  };
+  return map[name] ?? "#71717a";
+}
+
+function displayName(p: string): string {
+  return PLATFORM_CONFIG[p as Platform]?.name ?? p;
+}
+
+interface DailyRow {
+  date: string;
+  impressions: number;
+  engagementRate: number;
+  followers: number;
+}
+
+interface PlatformRow {
+  platform: string;
+  engagement: number;
+  fill: string;
+}
+
+interface TopPostRow {
+  rank: number;
+  preview: string;
+  platform: string;
+  impressions: number;
+  likes: number;
+  comments: number;
+  engagementRate: number;
+}
 
 function ChartTooltip({
   active,
@@ -197,81 +108,171 @@ function ChartTooltip({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
+function todayISO() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function thirtyDaysAgoISO() {
+  return new Date(Date.now() - 30 * 86_400_000).toISOString().split("T")[0];
+}
 
 export default function AnalyticsPage() {
-  const today = new Date().toISOString().split("T")[0];
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000)
-    .toISOString()
-    .split("T")[0];
-
-  const [startDate, setStartDate] = useState(thirtyDaysAgo);
-  const [endDate, setEndDate] = useState(today);
+  const [startDate, setStartDate] = useState(thirtyDaysAgoISO);
+  const [endDate, setEndDate] = useState(todayISO);
   const [isLive, setIsLive] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [dailyData, setDailyData] = useState<DailyRow[]>([]);
+  const [platformData, setPlatformData] = useState<PlatformRow[]>([]);
+  const [topPosts, setTopPosts] = useState<TopPostRow[]>([]);
+  const [followerGrowth, setFollowerGrowth] = useState<number | null>(null);
 
   useEffect(() => {
     async function fetchAnalytics() {
       setIsFetching(true);
+      setError(null);
       try {
-        const res = await fetch(`/api/omnisocial/analytics?start_date=${startDate}&end_date=${endDate}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.impressions || data.engagement_rate || data.followers) {
-            setIsLive(true);
+        const res = await fetch(
+          `/api/omnisocial/analytics?start_date=${startDate}&end_date=${endDate}`,
+        );
+        if (!res.ok) {
+          throw new Error(`API returned ${res.status}`);
+        }
+        const raw = await res.json();
+        const data: AnalyticsData = raw.data ?? raw;
+
+        const engagementMap = new Map<string, number>();
+        if (Array.isArray(data.engagement_rate)) {
+          for (const e of data.engagement_rate) {
+            engagementMap.set(e.date, e.value);
           }
         }
-      } catch {} finally {
+
+        if (Array.isArray(data.impressions) && data.impressions.length > 0) {
+          setDailyData(
+            data.impressions.map((imp) => {
+              const d = new Date(imp.date + "T00:00:00");
+              return {
+                date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                impressions: imp.value,
+                engagementRate: engagementMap.get(imp.date) ?? 0,
+                followers: 0,
+              };
+            }),
+          );
+        } else {
+          setDailyData([]);
+        }
+
+        if (Array.isArray(data.top_posts) && data.top_posts.length > 0) {
+          const byPlatform = new Map<string, number[]>();
+          for (const post of data.top_posts) {
+            const name = displayName(post.platform);
+            if (!byPlatform.has(name)) byPlatform.set(name, []);
+            byPlatform.get(name)!.push(post.engagement_rate);
+          }
+          const pRows: PlatformRow[] = [];
+          for (const [name, rates] of byPlatform) {
+            const avg = rates.reduce((a, b) => a + b, 0) / rates.length;
+            pRows.push({ platform: name, engagement: +avg.toFixed(1), fill: platformFill(name) });
+          }
+          pRows.sort((a, b) => b.engagement - a.engagement);
+          setPlatformData(pRows);
+
+          const postRows: TopPostRow[] = [...data.top_posts]
+            .sort((a, b) => b.impressions - a.impressions)
+            .map((post, i) => ({
+              rank: i + 1,
+              preview: `Post ${post.id.substring(0, 8)}`,
+              platform: displayName(post.platform),
+              impressions: post.impressions,
+              likes: post.likes,
+              comments: post.comments,
+              engagementRate: post.engagement_rate,
+            }));
+          setTopPosts(postRows);
+        } else {
+          setPlatformData([]);
+          setTopPosts([]);
+        }
+
+        if (data.followers && typeof data.followers === "object") {
+          const growth = Object.values(data.followers).reduce(
+            (s, f) => s + (f.change ?? 0),
+            0,
+          );
+          setFollowerGrowth(growth);
+        } else {
+          setFollowerGrowth(null);
+        }
+
+        const hasData =
+          (Array.isArray(data.impressions) && data.impressions.length > 0) ||
+          (Array.isArray(data.engagement_rate) && data.engagement_rate.length > 0) ||
+          (Array.isArray(data.top_posts) && data.top_posts.length > 0) ||
+          (data.followers && Object.keys(data.followers).length > 0);
+        setIsLive(hasData);
+      } catch (err) {
+        console.error("Failed to fetch analytics:", err);
+        setError(err instanceof Error ? err.message : "Unknown error");
+        setIsLive(false);
+      } finally {
         setIsFetching(false);
       }
     }
     fetchAnalytics();
   }, [startDate, endDate]);
 
-  const stats = [
-    {
-      title: "Total Impressions",
-      value: "245,832",
-      change: "+12.5%",
-      changeLabel: "vs last period",
-      positive: true,
-      icon: Eye,
-    },
-    {
-      title: "Engagement Rate",
-      value: "4.8%",
-      change: "+0.3%",
-      changeLabel: "vs last period",
-      positive: true,
-      icon: Heart,
-    },
-    {
-      title: "Follower Growth",
-      value: "+1,247",
-      change: "this month",
-      changeLabel: "",
-      positive: true,
-      icon: Users,
-    },
-    {
-      title: "Total Posts",
-      value: "48",
-      change: "this month",
-      changeLabel: "",
-      positive: true,
-      icon: BarChart3,
-    },
-  ];
+  const stats = useMemo(() => {
+    const totalImpressions = dailyData.reduce((s, d) => s + d.impressions, 0);
+    const avgEngagement =
+      dailyData.length > 0
+        ? dailyData.reduce((s, d) => s + d.engagementRate, 0) / dailyData.length
+        : 0;
+
+    return [
+      {
+        title: "Total Impressions",
+        value: totalImpressions > 0 ? totalImpressions.toLocaleString() : "—",
+        change: isLive ? "this period" : "—",
+        changeLabel: "",
+        positive: totalImpressions > 0,
+        icon: Eye,
+      },
+      {
+        title: "Engagement Rate",
+        value: avgEngagement > 0 ? `${avgEngagement.toFixed(1)}%` : "—",
+        change: isLive ? "avg" : "—",
+        changeLabel: "",
+        positive: avgEngagement > 0,
+        icon: Heart,
+      },
+      {
+        title: "Follower Growth",
+        value:
+          followerGrowth !== null
+            ? `${followerGrowth > 0 ? "+" : ""}${followerGrowth.toLocaleString()}`
+            : "—",
+        change: "this period",
+        changeLabel: "",
+        positive: (followerGrowth ?? 0) > 0,
+        icon: Users,
+      },
+      {
+        title: "Top Posts",
+        value: topPosts.length > 0 ? String(topPosts.length) : "—",
+        change: "returned",
+        changeLabel: "",
+        positive: topPosts.length > 0,
+        icon: BarChart3,
+      },
+    ];
+  }, [dailyData, followerGrowth, topPosts, isLive]);
 
   if (isFetching) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-4 py-8 text-zinc-100 sm:px-6 lg:px-8">
-      {/* ----------------------------------------------------------------- */}
-      {/* Page Header                                                       */}
-      {/* ----------------------------------------------------------------- */}
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold tracking-tight text-white">
           Analytics
@@ -294,17 +295,25 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Stats Row                                                         */}
-      {/* ----------------------------------------------------------------- */}
+      {error && (
+        <div className="mb-6 flex items-center gap-2 rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-400">
+          <WifiOff className="size-4" />
+          <span>Failed to load analytics: {error}</span>
+        </div>
+      )}
+
+      {!isLive && !isFetching && !error && (
+        <div className="mb-6 flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-400">
+          <Wifi className="size-4" />
+          <span>No analytics data available for this period.</span>
+        </div>
+      )}
+
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <Card
-              key={stat.title}
-              className="border-zinc-800 bg-zinc-900"
-            >
+            <Card key={stat.title} className="border-zinc-800 bg-zinc-900">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm font-medium text-zinc-400">
@@ -321,11 +330,7 @@ export default function AnalyticsPage() {
                   ) : (
                     <TrendingDown className="size-3 text-red-500" />
                   )}
-                  <span
-                    className={cn(
-                      stat.positive ? "text-emerald-500" : "text-red-500"
-                    )}
-                  >
+                  <span className={cn(stat.positive ? "text-emerald-500" : "text-red-500")}>
                     {stat.change}
                   </span>
                   {stat.changeLabel && (
@@ -338,11 +343,7 @@ export default function AnalyticsPage() {
         })}
       </div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Charts Row 1: Impressions + Engagement Rate                       */}
-      {/* ----------------------------------------------------------------- */}
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Impressions Area Chart */}
         <Card className="border-zinc-800 bg-zinc-900">
           <CardHeader>
             <CardTitle className="text-base font-semibold text-white">
@@ -351,69 +352,52 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dailyData}>
-                  <defs>
-                    <linearGradient
-                      id="impressionsGradient"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="0%" stopColor="#6366f1" stopOpacity={0.4} />
-                      <stop
-                        offset="100%"
-                        stopColor="#3b82f6"
-                        stopOpacity={0.05}
-                      />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#3f3f46"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fill: "#71717a", fontSize: 11 }}
-                    axisLine={{ stroke: "#3f3f46" }}
-                    tickLine={false}
-                    interval={4}
-                  />
-                  <YAxis
-                    tick={{ fill: "#71717a", fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(v: number) =>
-                      v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)
-                    }
-                  />
-                  <Tooltip
-                    content={
-                      <ChartTooltip
-                        valueFormatter={(v) => v.toLocaleString()}
-                      />
-                    }
-                  />
-                  <Legend
-                    wrapperStyle={{ color: "#71717a", fontSize: 12 }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="impressions"
-                    name="Impressions"
-                    stroke="#818cf8"
-                    strokeWidth={2}
-                    fill="url(#impressionsGradient)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              {dailyData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={dailyData}>
+                    <defs>
+                      <linearGradient id="impressionsGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#6366f1" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.05} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fill: "#71717a", fontSize: 11 }}
+                      axisLine={{ stroke: "#3f3f46" }}
+                      tickLine={false}
+                      interval={4}
+                    />
+                    <YAxis
+                      tick={{ fill: "#71717a", fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v: number) =>
+                        v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)
+                      }
+                    />
+                    <Tooltip content={<ChartTooltip valueFormatter={(v) => v.toLocaleString()} />} />
+                    <Legend wrapperStyle={{ color: "#71717a", fontSize: 12 }} />
+                    <Area
+                      type="monotone"
+                      dataKey="impressions"
+                      name="Impressions"
+                      stroke="#818cf8"
+                      strokeWidth={2}
+                      fill="url(#impressionsGradient)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+                  No data
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Engagement Rate Line Chart */}
         <Card className="border-zinc-800 bg-zinc-900">
           <CardHeader>
             <CardTitle className="text-base font-semibold text-white">
@@ -422,59 +406,52 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dailyData}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#3f3f46"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fill: "#71717a", fontSize: 11 }}
-                    axisLine={{ stroke: "#3f3f46" }}
-                    tickLine={false}
-                    interval={4}
-                  />
-                  <YAxis
-                    tick={{ fill: "#71717a", fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                    domain={["dataMin - 0.5", "dataMax + 0.5"]}
-                    tickFormatter={(v: number) => `${v}%`}
-                  />
-                  <Tooltip
-                    content={
-                      <ChartTooltip
-                        valueFormatter={(v) => v.toFixed(2)}
-                        valueSuffix="%"
-                      />
-                    }
-                  />
-                  <Legend
-                    wrapperStyle={{ color: "#71717a", fontSize: 12 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="engagementRate"
-                    name="Engagement Rate"
-                    stroke="#22c55e"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4, fill: "#22c55e" }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {dailyData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={dailyData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fill: "#71717a", fontSize: 11 }}
+                      axisLine={{ stroke: "#3f3f46" }}
+                      tickLine={false}
+                      interval={4}
+                    />
+                    <YAxis
+                      tick={{ fill: "#71717a", fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      domain={["dataMin - 0.5", "dataMax + 0.5"]}
+                      tickFormatter={(v: number) => `${v}%`}
+                    />
+                    <Tooltip
+                      content={
+                        <ChartTooltip valueFormatter={(v) => v.toFixed(2)} valueSuffix="%" />
+                      }
+                    />
+                    <Legend wrapperStyle={{ color: "#71717a", fontSize: 12 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="engagementRate"
+                      name="Engagement Rate"
+                      stroke="#22c55e"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4, fill: "#22c55e" }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+                  No data
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Charts Row 2: Platform Breakdown + Follower Growth                 */}
-      {/* ----------------------------------------------------------------- */}
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Platform Breakdown Bar Chart */}
         <Card className="border-zinc-800 bg-zinc-900">
           <CardHeader>
             <CardTitle className="text-base font-semibold text-white">
@@ -483,57 +460,50 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={platformData}
-                  layout="vertical"
-                  margin={{ left: 20 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#3f3f46"
-                    horizontal={false}
-                  />
-                  <XAxis
-                    type="number"
-                    tick={{ fill: "#71717a", fontSize: 11 }}
-                    axisLine={{ stroke: "#3f3f46" }}
-                    tickLine={false}
-                    tickFormatter={(v: number) => `${v}%`}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="platform"
-                    tick={{ fill: "#71717a", fontSize: 12 }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={80}
-                  />
-                  <Tooltip
-                    content={
-                      <ChartTooltip
-                        valueFormatter={(v) => v.toFixed(1)}
-                        valueSuffix="%"
-                      />
-                    }
-                  />
-                  <Bar
-                    dataKey="engagement"
-                    name="Engagement %"
-                    radius={[0, 4, 4, 0]}
-                    barSize={20}
-                  >
-                    {platformData.map((entry) => (
-                      <rect key={entry.platform} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              {platformData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={platformData} layout="vertical" margin={{ left: 20 }}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#3f3f46"
+                      horizontal={false}
+                    />
+                    <XAxis
+                      type="number"
+                      tick={{ fill: "#71717a", fontSize: 11 }}
+                      axisLine={{ stroke: "#3f3f46" }}
+                      tickLine={false}
+                      tickFormatter={(v: number) => `${v}%`}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="platform"
+                      tick={{ fill: "#71717a", fontSize: 12 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={80}
+                    />
+                    <Tooltip
+                      content={
+                        <ChartTooltip valueFormatter={(v) => v.toFixed(1)} valueSuffix="%" />
+                      }
+                    />
+                    <Bar dataKey="engagement" name="Engagement %" radius={[0, 4, 4, 0]} barSize={20}>
+                      {platformData.map((entry) => (
+                        <rect key={entry.platform} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+                  No data
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Follower Growth Area Chart */}
         <Card className="border-zinc-800 bg-zinc-900">
           <CardHeader>
             <CardTitle className="text-base font-semibold text-white">
@@ -542,73 +512,14 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dailyData}>
-                  <defs>
-                    <linearGradient
-                      id="followersGradient"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.4} />
-                      <stop
-                        offset="100%"
-                        stopColor="#7c3aed"
-                        stopOpacity={0.05}
-                      />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#3f3f46"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fill: "#71717a", fontSize: 11 }}
-                    axisLine={{ stroke: "#3f3f46" }}
-                    tickLine={false}
-                    interval={4}
-                  />
-                  <YAxis
-                    tick={{ fill: "#71717a", fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                    domain={["dataMin - 100", "dataMax + 100"]}
-                    tickFormatter={(v: number) =>
-                      v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)
-                    }
-                  />
-                  <Tooltip
-                    content={
-                      <ChartTooltip
-                        valueFormatter={(v) => v.toLocaleString()}
-                      />
-                    }
-                  />
-                  <Legend
-                    wrapperStyle={{ color: "#71717a", fontSize: 12 }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="followers"
-                    name="Followers"
-                    stroke="#a78bfa"
-                    strokeWidth={2}
-                    fill="url(#followersGradient)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+                No data
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Top Performing Posts Table                                         */}
-      {/* ----------------------------------------------------------------- */}
       <Card className="border-zinc-800 bg-zinc-900">
         <CardHeader>
           <CardTitle className="text-base font-semibold text-white">
@@ -616,67 +527,73 @@ export default function AnalyticsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="border-zinc-800 hover:bg-zinc-800/50">
-                <TableHead className="text-zinc-400">Rank</TableHead>
-                <TableHead className="text-zinc-400">Post Preview</TableHead>
-                <TableHead className="text-zinc-400">Platform</TableHead>
-                <TableHead className="text-right text-zinc-400">
-                  Impressions
-                </TableHead>
-                <TableHead className="text-right text-zinc-400">
-                  Likes
-                </TableHead>
-                <TableHead className="text-right text-zinc-400">
-                  Comments
-                </TableHead>
-                <TableHead className="text-right text-zinc-400">
-                  Engagement
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {topPosts.map((post) => (
-                <TableRow
-                  key={post.rank}
-                  className="border-zinc-800 hover:bg-zinc-800/50"
-                >
-                  <TableCell className="font-medium text-zinc-300">
-                    #{post.rank}
-                  </TableCell>
-                  <TableCell
-                    className="max-w-[260px] truncate text-zinc-300"
-                    title={post.preview}
-                  >
-                    {post.preview}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={cn(
-                        "text-xs",
-                        platformColors[post.platform] ?? "bg-zinc-700"
-                      )}
-                    >
-                      {post.platform}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right text-zinc-300">
-                    {post.impressions.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right text-zinc-300">
-                    {post.likes.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right text-zinc-300">
-                    {post.comments.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right font-medium text-emerald-500">
-                    {post.engagementRate}%
-                  </TableCell>
+          {topPosts.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-zinc-800 hover:bg-zinc-800/50">
+                  <TableHead className="text-zinc-400">Rank</TableHead>
+                  <TableHead className="text-zinc-400">Post</TableHead>
+                  <TableHead className="text-zinc-400">Platform</TableHead>
+                  <TableHead className="text-right text-zinc-400">
+                    Impressions
+                  </TableHead>
+                  <TableHead className="text-right text-zinc-400">
+                    Likes
+                  </TableHead>
+                  <TableHead className="text-right text-zinc-400">
+                    Comments
+                  </TableHead>
+                  <TableHead className="text-right text-zinc-400">
+                    Engagement
+                  </TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {topPosts.map((post) => (
+                  <TableRow
+                    key={post.rank}
+                    className="border-zinc-800 hover:bg-zinc-800/50"
+                  >
+                    <TableCell className="font-medium text-zinc-300">
+                      #{post.rank}
+                    </TableCell>
+                    <TableCell
+                      className="max-w-[260px] truncate text-zinc-300"
+                      title={post.preview}
+                    >
+                      {post.preview}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={cn(
+                          "text-xs",
+                          platformColors[post.platform] ?? "bg-zinc-700",
+                        )}
+                      >
+                        {post.platform}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right text-zinc-300">
+                      {post.impressions.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right text-zinc-300">
+                      {post.likes.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right text-zinc-300">
+                      {post.comments.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-emerald-500">
+                      {post.engagementRate}%
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
+              No data
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

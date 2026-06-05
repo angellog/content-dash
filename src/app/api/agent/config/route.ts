@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { encrypt, decrypt } from "@/lib/encryption";
+import { agentConfigPutSchema, validateBody } from "@/lib/validations/schemas";
 
 function maskKey(key: string) {
   if (key.length <= 4) return "****";
@@ -27,12 +28,12 @@ export async function GET(req: NextRequest) {
 
   let maskedKey = null;
   if (config.llmApiKeyEncrypted) {
-    try { maskedKey = maskKey(decrypt(config.llmApiKeyEncrypted)); } catch { maskedKey = maskKey(config.llmApiKeyEncrypted); }
+    try { maskedKey = maskKey(decrypt(config.llmApiKeyEncrypted)); } catch { maskedKey = "****"; }
   }
 
   let maskedToken = null;
   if (config.twilioAuthTokenEncrypted) {
-    try { maskedToken = maskKey(decrypt(config.twilioAuthTokenEncrypted)); } catch { maskedToken = maskKey(config.twilioAuthTokenEncrypted); }
+    try { maskedToken = maskKey(decrypt(config.twilioAuthTokenEncrypted)); } catch { maskedToken = "****"; }
   }
 
   return NextResponse.json({
@@ -54,7 +55,11 @@ export async function PUT(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { llmProvider, llmApiKey, twilioAccountSid, twilioAuthToken, twilioWhatsappNumber, isActive } = body;
+  const parsed = validateBody(agentConfigPutSchema, body);
+  if ("error" in parsed) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+  const { llmProvider, llmApiKey, twilioAccountSid, twilioAuthToken, twilioWhatsappNumber, isActive } = parsed.data;
 
   const { data: existing } = await supabase
     .from("AgentConfig")
@@ -71,10 +76,10 @@ export async function PUT(req: NextRequest) {
   };
 
   if (llmApiKey && llmApiKey !== "****") {
-    try { updateData.llmApiKeyEncrypted = encrypt(llmApiKey); } catch { updateData.llmApiKeyEncrypted = llmApiKey; }
+    try { updateData.llmApiKeyEncrypted = encrypt(llmApiKey); } catch { return NextResponse.json({ error: "Failed to encrypt LLM API key" }, { status: 500 }); }
   }
   if (twilioAuthToken && twilioAuthToken !== "****") {
-    try { updateData.twilioAuthTokenEncrypted = encrypt(twilioAuthToken); } catch { updateData.twilioAuthTokenEncrypted = twilioAuthToken; }
+    try { updateData.twilioAuthTokenEncrypted = encrypt(twilioAuthToken); } catch { return NextResponse.json({ error: "Failed to encrypt Twilio auth token" }, { status: 500 }); }
   }
 
   let result;

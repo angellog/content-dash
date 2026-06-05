@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,8 +15,22 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
+function getPasswordStrength(password: string): { label: string; color: string } {
+  if (password.length < 6) return { label: "Too short", color: "text-red-400" };
+  let score = 0;
+  if (password.length >= 8) score++;
+  if (password.length >= 12) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/[0-9]/.test(password)) score++;
+  if (/[^A-Za-z0-9]/.test(password)) score++;
+  if (score <= 1) return { label: "Weak", color: "text-red-400" };
+  if (score <= 3) return { label: "Medium", color: "text-yellow-400" };
+  return { label: "Strong", color: "text-emerald-400" };
+}
+
 function LoginContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const redirect = searchParams.get("redirect") || "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,11 +60,13 @@ function LoginContent() {
       if (err) {
         setError(err.message);
       } else {
-        window.location.href = redirect;
+        router.push(redirect);
       }
     }
     setLoading(false);
   };
+
+  const strength = mode === "signup" && password.length > 0 ? getPasswordStrength(password) : null;
 
   if (sent) {
     return (
@@ -117,6 +133,11 @@ function LoginContent() {
                 minLength={6}
                 className="border-zinc-700 bg-zinc-950 text-zinc-100 placeholder:text-zinc-600"
               />
+              {strength && (
+                <p className={`text-xs ${strength.color}`}>
+                  Password strength: {strength.label}
+                </p>
+              )}
             </div>
 
             {error && (
@@ -174,8 +195,6 @@ function LoginContent() {
     </div>
   );
 }
-
-import { Suspense } from "react";
 
 export default function LoginPage() {
   return (

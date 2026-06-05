@@ -16,36 +16,13 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from "@/components/ui/table";
-import {
   Cpu,
   Lock,
   ShieldCheck,
   Sparkles,
   CreditCard,
   Send,
-  Eye,
   Wifi,
-  Phone,
-  QrCode,
-  MapPin,
-  Link,
-  CheckCircle,
-  Play,
-  Pause,
   Terminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -61,28 +38,31 @@ export default function OpenClawAgent() {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [unlockPlan, setUnlockPlan] = useState("pro-monthly");
-  
-  // Dashboard states (interactive after unlock)
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+
   const [inboxAutopilot, setInboxAutopilot] = useState(true);
   const [competitorScraper, setCompetitorScraper] = useState(true);
   const [smartPosting, setSmartPosting] = useState(false);
   const [competitorInput, setCompetitorInput] = useState("");
-  const [competitors, setCompetitors] = useState(["BrandX", "MegaRetail"]);
+  const [competitors, setCompetitors] = useState<string[]>([]);
   
-  // Mock live running logs
-  const [logs, setLogs] = useState<AgentLog[]>([
-    { timestamp: "12:04:12", type: "info", message: "OpenClaw agent core initialized successfully." },
-    { timestamp: "12:04:15", type: "success", message: "OmniSocial API handshake successful." },
-    { timestamp: "12:05:01", type: "info", message: "Scanning social inboxes for unresolved leads..." },
-    { timestamp: "12:05:08", type: "success", message: "Drafted reply to customer query 'Are you open weekends?' on Instagram" },
-  ]);
+  const [logs, setLogs] = useState<AgentLog[]>([]);
+  const [commandInput, setCommandInput] = useState("");
 
   useEffect(() => {
     async function checkConnection() {
-      const res = await fetch("/api/omnisocial/config");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.connected) setIsUnlocked(true);
+      try {
+        const res = await fetch("/api/omnisocial/config");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.connected) setIsUnlocked(true);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to check OmniSocial connection");
       }
     }
     checkConnection();
@@ -112,13 +92,46 @@ export default function OpenClawAgent() {
             setLogs(mapped);
           }
         }
-      } catch {}
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to fetch agent logs");
+      }
     }
 
     fetchLogs();
     const timer = setInterval(fetchLogs, 10000);
     return () => clearInterval(timer);
   }, [isUnlocked]);
+
+  useEffect(() => {
+    if (!isUnlocked) return;
+    async function fetchCompetitors() {
+      try {
+        const res = await fetch("/api/competitors");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.competitors) {
+            setCompetitors(data.competitors.map((c: Record<string, unknown>) => c.brandName as string));
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to fetch competitors");
+      }
+    }
+    fetchCompetitors();
+  }, [isUnlocked]);
+
+  const handleToggle = async (field: string, setter: (v: boolean) => void, value: boolean) => {
+    setter(value);
+    try {
+      await fetch("/api/agent/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update agent config");
+    }
+  };
 
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,43 +141,99 @@ export default function OpenClawAgent() {
     }
 
     try {
-      const res = await fetch("https://api.omnisocials.com/v1/accounts", {
-        headers: { Authorization: `Bearer ${apiKey}` },
+      const configRes = await fetch("/api/omnisocial/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
       });
-      if (res.ok) {
-        const configRes = await fetch("/api/omnisocial/config", {
+      if (!configRes.ok) {
+        toast.error("Failed to save API key. Please try again.");
+        return;
+      }
+
+      const verifyRes = await fetch("/api/omnisocial/accounts");
+      if (verifyRes.ok) {
+        await fetch("/api/agent/config", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ apiKey }),
+          body: JSON.stringify({ isActive: true, plan: unlockPlan }),
         });
-        if (configRes.ok) {
-          setIsUnlocked(true);
-          toast.success("OpenClaw agent unlocked — OmniSocial handshake established.");
-        } else {
-          toast.error("Failed to save API key. Please try again.");
-        }
+        setIsUnlocked(true);
+        toast.success("OpenClaw agent unlocked — OmniSocial handshake established.");
       } else {
         toast.error("Invalid API key. Check your OmniSocial dashboard.");
       }
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connection failed. Check your network.");
       toast.error("Connection failed. Check your network.");
     }
   };
 
-  const handleAddCompetitor = (e: React.FormEvent) => {
+  const handleAddCompetitor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!competitorInput.trim()) return;
-    setCompetitors([...competitors, competitorInput.trim()]);
-    setCompetitorInput("");
-    
-    // Add custom log entry
+
+    const name = competitorInput.trim();
+    try {
+      const res = await fetch("/api/competitors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brandName: name }),
+      });
+      if (res.ok) {
+        setCompetitors((prev) => [...prev, name]);
+        setCompetitorInput("");
+        const now = new Date();
+        const timeStr = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+        setLogs((prev) => [...prev, {
+          timestamp: timeStr,
+          type: "info",
+          message: `Added new target '${name}' to Competitor Watchlist.`
+        }]);
+
+        const listRes = await fetch("/api/competitors");
+        if (listRes.ok) {
+          const data = await listRes.json();
+          if (data.competitors) {
+            setCompetitors(data.competitors.map((c: Record<string, unknown>) => c.brandName as string));
+          }
+        }
+      } else {
+        toast.error("Failed to add competitor to watchlist.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add competitor");
+      toast.error("Failed to add competitor to watchlist.");
+    }
+  };
+
+  const handleTerminalCommand = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commandInput.trim()) return;
+    const input = commandInput.trim();
     const now = new Date();
-    const timeStr = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
-    setLogs((prev) => [...prev, {
-      timestamp: timeStr,
-      type: "info",
-      message: `Added new target '${competitorInput.trim()}' to Competitor Watchlist.`
-    }]);
+    const ts = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+    setLogs((prev) => [...prev, { timestamp: ts, type: "info" as const, message: `> ${input}` }]);
+    setCommandInput("");
+    try {
+      const res = await fetch("/api/agent/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: input, source: "web" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const rts = new Date();
+        const rtsStr = `${rts.getHours().toString().padStart(2, "0")}:${rts.getMinutes().toString().padStart(2, "0")}:${rts.getSeconds().toString().padStart(2, "0")}`;
+        setLogs((prev) => [...prev, { timestamp: rtsStr, type: "success" as const, message: data.response ?? "Done." }]);
+        toast.success("Agent command executed!");
+      } else {
+        toast.error("Agent execution failed.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Agent request failed");
+      toast.error("Agent request failed.");
+    }
   };
 
   return (
@@ -173,7 +242,6 @@ export default function OpenClawAgent() {
 
       <main className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6 relative">
         
-        {/* Banner */}
         <section className="relative overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-violet-950/20 p-6">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1">
@@ -198,16 +266,13 @@ export default function OpenClawAgent() {
           </div>
         </section>
 
-        {/* Outer container holding the dashboard and the overlay */}
         <div className="relative min-h-[500px]">
           
-          {/* MOCK BACKSTAGE DASHBOARD (Blurred when locked) */}
           <div className={cn(
             "grid gap-6 lg:grid-cols-5 transition-all duration-500",
             !isUnlocked ? "blur-md select-none pointer-events-none opacity-50" : ""
           )}>
             
-            {/* Left Hand Toggles (2 Cols) */}
             <div className="lg:col-span-2 space-y-6">
               <Card className="border-zinc-800 bg-zinc-900">
                 <CardHeader>
@@ -220,7 +285,11 @@ export default function OpenClawAgent() {
                       <Label className="text-zinc-200 text-sm font-semibold">Inbox Autopilot replies</Label>
                       <p className="text-xxs text-zinc-500">Draft responses & automatically reply to basic FAQs.</p>
                     </div>
-                    <Switch checked={inboxAutopilot} onCheckedChange={setInboxAutopilot} className="data-[state=checked]:bg-violet-600" />
+                    <Switch
+                      checked={inboxAutopilot}
+                      onCheckedChange={(v) => handleToggle("inboxAutopilot", setInboxAutopilot, v)}
+                      className="data-[state=checked]:bg-violet-600"
+                    />
                   </div>
 
                   <div className="flex items-center justify-between border-b border-zinc-800/50 pb-4">
@@ -228,7 +297,11 @@ export default function OpenClawAgent() {
                       <Label className="text-zinc-200 text-sm font-semibold">Competitor Tracker Scraper</Label>
                       <p className="text-xxs text-zinc-500">Monitor rival pricing, posts, and campaign starts.</p>
                     </div>
-                    <Switch checked={competitorScraper} onCheckedChange={setCompetitorScraper} className="data-[state=checked]:bg-violet-600" />
+                    <Switch
+                      checked={competitorScraper}
+                      onCheckedChange={(v) => handleToggle("competitorScraper", setCompetitorScraper, v)}
+                      className="data-[state=checked]:bg-violet-600"
+                    />
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -236,12 +309,15 @@ export default function OpenClawAgent() {
                       <Label className="text-zinc-200 text-sm font-semibold">Autonomous Dynamic Posting</Label>
                       <p className="text-xxs text-zinc-500">Draft and publish statuses & social posts based on logs.</p>
                     </div>
-                    <Switch checked={smartPosting} onCheckedChange={setSmartPosting} className="data-[state=checked]:bg-violet-600" />
+                    <Switch
+                      checked={smartPosting}
+                      onCheckedChange={(v) => handleToggle("smartPosting", setSmartPosting, v)}
+                      className="data-[state=checked]:bg-violet-600"
+                    />
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Competitor Scraper Watchlist */}
               <Card className="border-zinc-800 bg-zinc-900">
                 <CardHeader>
                   <CardTitle className="text-white text-base">Competitor Watchlist</CardTitle>
@@ -270,7 +346,6 @@ export default function OpenClawAgent() {
               </Card>
             </div>
 
-            {/* Right Hand Agent Logs & Console (3 Cols) */}
             <Card className="border-zinc-800 bg-zinc-900 lg:col-span-3 flex flex-col h-full min-h-[420px]">
               <CardHeader className="border-b border-zinc-800/50 pb-3">
                 <div className="flex items-center justify-between">
@@ -305,38 +380,10 @@ export default function OpenClawAgent() {
               </CardContent>
 
               <CardFooter className="border-t border-zinc-800/60 p-4 space-y-3">
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    const input = e.currentTarget.command.value as string;
-                    if (!input.trim()) return;
-                    const now = new Date();
-                    const ts = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
-                    setLogs((prev) => [...prev, { timestamp: ts, type: "info" as const, message: `> ${input}` }]);
-                    e.currentTarget.command.value = "";
-                    try {
-                      const res = await fetch("/api/agent/execute", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ message: input, source: "web" }),
-                      });
-                      if (res.ok) {
-                        const data = await res.json();
-                        const rts = new Date();
-                        const rtsStr = `${rts.getHours().toString().padStart(2, "0")}:${rts.getMinutes().toString().padStart(2, "0")}:${rts.getSeconds().toString().padStart(2, "0")}`;
-                        setLogs((prev) => [...prev, { timestamp: rtsStr, type: "success" as const, message: data.response ?? "Done." }]);
-                        toast.success("Agent command executed!");
-                      } else {
-                        toast.error("Agent execution failed.");
-                      }
-                    } catch {
-                      toast.error("Agent request failed.");
-                    }
-                  }}
-                  className="flex w-full gap-2"
-                >
+                <form onSubmit={handleTerminalCommand} className="flex w-full gap-2">
                   <Input
-                    name="command"
+                    value={commandInput}
+                    onChange={(e) => setCommandInput(e.target.value)}
                     placeholder='Type a command... e.g. "Post an Instagram carousel about the Breaking News"'
                     className="bg-zinc-950 border-zinc-800 text-zinc-200 font-mono text-xs placeholder:text-zinc-600"
                   />
@@ -355,7 +402,6 @@ export default function OpenClawAgent() {
 
           </div>
 
-          {/* BEAUTIFUL BLURRED GLASS COVER / PRO GATEWAY */}
           {!isUnlocked && (
             <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/40 backdrop-blur-md rounded-xl border border-zinc-800/80 z-25 p-4 sm:p-6 lg:p-8">
               
@@ -378,7 +424,6 @@ export default function OpenClawAgent() {
                 <form onSubmit={handleUnlock}>
                   <CardContent className="p-6 space-y-5">
                     
-                    {/* Choose Plan option */}
                     <div className="space-y-2">
                       <Label className="text-zinc-300 font-semibold text-xs uppercase tracking-wider">Select Unlock Option</Label>
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -417,7 +462,6 @@ export default function OpenClawAgent() {
                       </div>
                     </div>
 
-                    {/* API Key Connection */}
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
                         <Label htmlFor="api-key" className="text-zinc-300 font-semibold text-xs uppercase tracking-wider">OmniSocial API Key</Label>

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { paymentPostSchema, validateBody } from "@/lib/validations/schemas";
+import { rateLimit, getRateLimitHeaders, RATE_LIMITS } from "@/lib/rate-limit";
 
 const FLW_BASE = "https://api.flutterwave.com/v3";
 
@@ -12,6 +14,12 @@ const CARD_PRICES: Record<string, number> = {
 };
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+  const rl = rateLimit(ip, RATE_LIMITS.payments.limit, RATE_LIMITS.payments.windowMs);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429, headers: getRateLimitHeaders(rl) });
+  }
+
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -22,7 +30,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { cardColor, quantity = 1, cardName, redirectType, targetUrl } = body;
+  const parsed = validateBody(paymentPostSchema, body);
+  if ("error" in parsed) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+  const { cardColor, quantity = 1, cardName, redirectType, destinationUrl } = parsed.data;
 
   const unitPrice = CARD_PRICES[cardColor] ?? 29.99;
   const amount = unitPrice * quantity;
@@ -65,7 +77,7 @@ export async function POST(req: NextRequest) {
           quantity,
           cardName,
           redirectType,
-          targetUrl,
+          destinationUrl,
         },
       }),
     });

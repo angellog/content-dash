@@ -30,7 +30,7 @@ interface SocialMediaStore {
 }
 
 export const useSocialMediaStore = create<SocialMediaStore>((set, get) => ({
-  posts: initialSocialPosts,
+  posts: process.env.NODE_ENV === "development" ? initialSocialPosts : ({} as Record<Platform, Post[]>),
   activePlatform: CONNECTED_PLATFORMS[0] || "instagram",
   viewMode: "status" as ViewMode,
   syncState: { isLive: false, lastSyncedAt: null, error: null },
@@ -40,16 +40,34 @@ export const useSocialMediaStore = create<SocialMediaStore>((set, get) => ({
 
   setViewMode: (mode) => set({ viewMode: mode }),
 
-  addPost: (platform, post) =>
-    set((state) => ({
-      posts: {
-        ...state.posts,
-        [platform]: [
-          { ...post, id: `${platform.slice(0, 2)}-${Date.now()}` },
-          ...state.posts[platform],
-        ],
-      },
-    })),
+  addPost: async (platform, post) => {
+    try {
+      const { success, post: created } = await createPostViaApi({
+        text: post.caption,
+        platforms: [platform],
+        scheduled_at: post.scheduledDate ? `${post.scheduledDate}T${post.scheduledTime || "12:00"}` : undefined,
+      });
+      set((state) => ({
+        posts: {
+          ...state.posts,
+          [platform]: [
+            success && created ? created : { ...post, id: `${platform.slice(0, 2)}-${Date.now()}` },
+            ...state.posts[platform],
+          ],
+        },
+      }));
+    } catch {
+      set((state) => ({
+        posts: {
+          ...state.posts,
+          [platform]: [
+            { ...post, id: `${platform.slice(0, 2)}-${Date.now()}` },
+            ...state.posts[platform],
+          ],
+        },
+      }));
+    }
+  },
 
   updatePost: (platform, id, updates) =>
     set((state) => ({
@@ -61,13 +79,17 @@ export const useSocialMediaStore = create<SocialMediaStore>((set, get) => ({
       },
     })),
 
-  deletePost: (platform, id) =>
+  deletePost: async (platform, id) => {
+    try {
+      await deletePostViaApi(id);
+    } catch {}
     set((state) => ({
       posts: {
         ...state.posts,
         [platform]: state.posts[platform].filter((p) => p.id !== id),
       },
-    })),
+    }));
+  },
 
   getPostsByStatus: (platform, status) => {
     const state = get();

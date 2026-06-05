@@ -131,8 +131,7 @@ interface PlatformIconBarProps {
 export function PlatformIconBar({ activePlatform, onSelect }: PlatformIconBarProps) {
   return (
     <>
-      <style>{`.scrollbar-hide::-webkit-scrollbar{display:none}.scrollbar-hide{-ms-overflow-style:none;scrollbar-width:none}`}</style>
-      <div className="flex items-center gap-1.5 p-1.5 bg-accent/30 rounded-2xl border border-border/50 overflow-x-auto scrollbar-hide">
+      <div className="flex items-center gap-1.5 p-1.5 bg-accent/30 rounded-2xl border border-border/50 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         <button
           onClick={() => onSelect("all")}
           title="All platforms"

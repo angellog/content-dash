@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import {
@@ -31,18 +32,14 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import {
-  Phone,
   QrCode,
   CreditCard,
   Sparkles,
-  Lock,
   ShieldCheck,
   Cpu,
   Wifi,
   MapPin,
-  Eye,
   Link,
-  Send,
   Upload,
   CheckCircle,
 } from "lucide-react";
@@ -50,33 +47,43 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Suspense } from "react";
 
+const CARD_PRICES: Record<number, number> = {
+  1: 29,
+  3: 69,
+  5: 99,
+  10: 149,
+};
+
 function SmartNfcCardsInner() {
-  // Configuration Form State
   const [redirectType, setRedirectType] = useState("instagram");
   const [redirectUrl, setRedirectUrl] = useState("https://instagram.com/mybusiness");
   const [whatsappMessage, setWhatsappMessage] = useState("Hi! I tapped your Smart NFC Card and would love to chat.");
+  const [whatsappNumber, setWhatsappNumber] = useState("");
   const [customTitle, setCustomTitle] = useState("Tap to Connect");
   
-  // Checkout Form State
   const [cardColor, setCardColor] = useState("matte-black");
   const [businessLogoName, setBusinessLogoName] = useState("");
   const [cardQuantity, setCardQuantity] = useState(1);
-  const [checkoutStep, setCheckoutStep] = useState("form");
   const [isPaying, setIsPaying] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [trackingCode] = useState(
+    () => String(Math.floor(100000 + Math.random() * 900000))
+  );
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    if (searchParams.get("payment_callback") === "true" && searchParams.get("status") === "successful") {
-      setCheckoutStep("success");
-    }
-  }, [searchParams]);
+    if (error) toast.error(error);
+  }, [error]);
 
-  // Mock stats
-  const [activeCards, setActiveCards] = useState([
-    { id: "nfc-1", name: "HQ Front Desk Card", type: "Link-in-Bio", taps: 428, status: "Active" },
-    { id: "nfc-2", name: "CEO's Pitch Tag", type: "WhatsApp Chat", taps: 189, status: "Active" },
-    { id: "nfc-3", name: "Conference Metal Card", type: "Custom URL", taps: 94, status: "Active" },
-  ]);
+  const [formStep, setFormStep] = useState("form");
+  const [dismissedCallback, setDismissedCallback] = useState(false);
+  const isPaymentSuccess = !dismissedCallback && searchParams.get("payment_callback") === "true" && searchParams.get("status") === "successful";
+  const checkoutStep = isPaymentSuccess ? "success" : formStep;
+
+  const [activeCards, setActiveCards] = useState<Array<{ id: string; name: string; type: string; taps: number; status: string }>>([]);
   const [isLive, setIsLive] = useState(false);
 
   useEffect(() => {
@@ -98,16 +105,27 @@ function SmartNfcCardsInner() {
             setIsLive(true);
           }
         }
-      } catch {}
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to fetch NFC cards");
+      }
     }
     fetchCards();
   }, []);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLogoFile(file);
+      if (logoPreview) URL.revokeObjectURL(logoPreview);
+      setLogoPreview(URL.createObjectURL(file));
+    }
+  };
 
   const handleConfigSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const targetUrl =
       redirectType === "whatsapp"
-        ? `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`
+        ? `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(whatsappMessage)}`
         : redirectUrl;
 
     try {
@@ -136,7 +154,8 @@ function SmartNfcCardsInner() {
         setIsLive(true);
         toast.success("NFC card configuration saved successfully!");
       }
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save NFC configuration.");
       toast.error("Failed to save NFC configuration.");
     }
   };
@@ -146,7 +165,7 @@ function SmartNfcCardsInner() {
     setIsPaying(true);
 
     const targetUrl = redirectType === "whatsapp"
-      ? `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`
+      ? `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(whatsappMessage)}`
       : redirectUrl;
 
     try {
@@ -173,27 +192,29 @@ function SmartNfcCardsInner() {
       } else {
         toast.error("Payment gateway not available. Please try again later.");
       }
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to initiate payment.");
       toast.error("Failed to initiate payment.");
     } finally {
       setIsPaying(false);
     }
   };
 
-  // Helper to determine active preview URL based on selections
   const getPreviewUrl = () => {
     if (redirectType === "instagram") return "https://instagram.com/yourbrand";
     if (redirectType === "linkinbio") return "https://contentdash.ai/yourbrand";
-    if (redirectType === "whatsapp") return "https://wa.me/123456789?text=Hello";
+    if (redirectType === "whatsapp") return `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "") || "123456789"}?text=Hello`;
     return redirectUrl;
   };
+
+  const cardTotal = CARD_PRICES[cardQuantity] ?? (29 * cardQuantity);
+  const totalTaps = activeCards.reduce((sum, c) => sum + c.taps, 0);
 
   return (
     <>
       <Header title="Smart NFC Cards" />
 
       <main className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6">
-        {/* Promo Hero */}
         <section className="relative overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-indigo-950/20 p-6">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1">
@@ -227,10 +248,8 @@ function SmartNfcCardsInner() {
           </div>
         </section>
 
-        {/* NFC Card Product Preview & Redirect Config */}
         <section className="grid gap-6 lg:grid-cols-5">
           
-          {/* Card Mockup (2 Cols) */}
           <div className="lg:col-span-2 flex flex-col justify-stretch">
             <Card className="border-zinc-800 bg-zinc-900/50 p-6 flex flex-col justify-between overflow-hidden relative">
               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -244,7 +263,6 @@ function SmartNfcCardsInner() {
                 </p>
               </div>
 
-              {/* CARD MOCK */}
               <div className="flex items-center justify-center py-6">
                 <div className={cn(
                   "relative w-full max-w-[340px] aspect-[1.586/1] rounded-2xl border border-zinc-700/50 shadow-2xl p-6 flex flex-col justify-between overflow-hidden select-none transition-all duration-300",
@@ -254,12 +272,10 @@ function SmartNfcCardsInner() {
                     ? "bg-gradient-to-br from-amber-600 via-amber-800 to-amber-950 text-amber-100"
                     : "bg-gradient-to-br from-zinc-200 via-zinc-400 to-zinc-600 text-zinc-950 border-zinc-300"
                 )}>
-                  {/* Subtle brushed metal effect overlay */}
                   <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.03)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.03)_50%,rgba(255,255,255,0.03)_75%,transparent_75%,transparent)] bg-[length:4px_4px] opacity-30 pointer-events-none"></div>
 
                   <div className="flex justify-between items-start z-10">
                     <div>
-                      {/* Brand Logo inside mockup */}
                       <div className="flex items-center gap-1">
                         <Sparkles className={cn("size-5", cardColor === "brushed-silver" ? "text-indigo-600" : "text-indigo-400")} />
                         <span className="text-xs font-black tracking-wider uppercase">
@@ -274,7 +290,6 @@ function SmartNfcCardsInner() {
                     <Wifi className={cn("size-6 animate-pulse", cardColor === "brushed-silver" ? "text-indigo-600" : "text-indigo-400")} />
                   </div>
 
-                  {/* Bottom half: Contact name & Mock QR Code */}
                   <div className="flex justify-between items-end z-10">
                     <div>
                       <p className="text-sm font-semibold tracking-wide">
@@ -285,7 +300,6 @@ function SmartNfcCardsInner() {
                       </p>
                     </div>
 
-                    {/* QR Code Container */}
                     <div className={cn("size-14 rounded-lg p-1.5 flex items-center justify-center border", 
                       cardColor === "brushed-silver" ? "bg-white border-zinc-300 text-zinc-950" : "bg-zinc-950 border-zinc-800 text-white"
                     )}>
@@ -295,7 +309,6 @@ function SmartNfcCardsInner() {
                 </div>
               </div>
 
-              {/* Card specs badges */}
               <div className="flex flex-wrap gap-2 pt-4 border-t border-zinc-800/50">
                 <Badge variant="secondary" className="bg-zinc-800 text-zinc-300 text-[10px]">
                   No Battery Needed
@@ -310,7 +323,6 @@ function SmartNfcCardsInner() {
             </Card>
           </div>
 
-          {/* Configuration Form (3 Cols) */}
           <Card className="border-zinc-800 bg-zinc-900 lg:col-span-3">
             <CardHeader>
               <div className="flex items-center gap-2">
@@ -334,7 +346,7 @@ function SmartNfcCardsInner() {
                           setRedirectType(val);
                           if (val === "instagram") setRedirectUrl("https://instagram.com/mybusiness");
                           else if (val === "linkinbio") setRedirectUrl("https://contentdash.ai/mybusiness");
-                          else if (val === "whatsapp") setRedirectUrl("https://wa.me/123456789");
+                          else if (val === "whatsapp") setRedirectUrl(`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "") || "123456789"}`);
                         }
                       }}
                     >
@@ -380,6 +392,8 @@ function SmartNfcCardsInner() {
                       <Input
                         id="wa-phone"
                         placeholder="+1 (555) 123-4567"
+                        value={whatsappNumber}
+                        onChange={(e) => setWhatsappNumber(e.target.value)}
                         className="border-zinc-800 bg-zinc-950 text-white focus-visible:ring-indigo-500"
                       />
                     </div>
@@ -415,9 +429,7 @@ function SmartNfcCardsInner() {
           </Card>
         </section>
 
-        {/* Tap Analytics and Map mock */}
         <section className="grid gap-6 lg:grid-cols-3">
-          {/* Active tags table */}
           <Card className="border-zinc-800 bg-zinc-900 lg:col-span-2">
             <CardHeader className="pb-3">
               <CardTitle className="text-white text-lg flex items-center gap-2">
@@ -425,6 +437,11 @@ function SmartNfcCardsInner() {
               </CardTitle>
               <CardDescription className="text-zinc-500">
                 Monitor taps and redirects on your registered physical devices.
+                {isLive && activeCards.length > 0 && (
+                  <span className="text-indigo-400 ml-1">
+                    {totalTaps} total taps across {activeCards.length} card{activeCards.length !== 1 ? "s" : ""}.
+                  </span>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -444,7 +461,11 @@ function SmartNfcCardsInner() {
                       <TableCell className="text-zinc-400">{c.type}</TableCell>
                       <TableCell className="text-right text-zinc-300 font-mono font-semibold">{c.taps}</TableCell>
                       <TableCell className="text-center">
-                        <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <Badge className={cn(
+                          c.status === "Active"
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            : "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"
+                        )}>
                           {c.status}
                         </Badge>
                       </TableCell>
@@ -455,7 +476,6 @@ function SmartNfcCardsInner() {
             </CardContent>
           </Card>
 
-          {/* Location / Device Mock */}
           <Card className="border-zinc-800 bg-zinc-900">
             <CardHeader>
               <CardTitle className="text-white text-lg flex items-center gap-2">
@@ -466,9 +486,7 @@ function SmartNfcCardsInner() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Map Mockup */}
               <div className="h-28 rounded-lg bg-zinc-950 border border-zinc-800 relative flex items-center justify-center overflow-hidden">
-                {/* Simulated Grid / Map dots */}
                 <div className="absolute inset-0 bg-[radial-gradient(#312e81_1px,transparent_1px)] [background-size:16px_16px] opacity-45"></div>
                 <div className="absolute size-3 rounded-full bg-indigo-500/30 border border-indigo-400 animate-ping top-1/3 left-1/4"></div>
                 <div className="absolute size-2 rounded-full bg-indigo-500 top-1/3 left-1/4"></div>
@@ -481,7 +499,6 @@ function SmartNfcCardsInner() {
                 </span>
               </div>
 
-              {/* Devices mock */}
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
                   <span className="text-zinc-400">iOS (iPhone)</span>
@@ -503,7 +520,6 @@ function SmartNfcCardsInner() {
           </Card>
         </section>
 
-        {/* Order Physical Cards Form */}
         <section id="order-section" className="scroll-mt-6">
           <Card className="border-zinc-800 bg-zinc-900 overflow-hidden relative">
             <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -523,7 +539,6 @@ function SmartNfcCardsInner() {
                 <CardContent className="p-6 space-y-6">
                   <div className="grid gap-6 md:grid-cols-3">
                     
-                    {/* Choose Finishes */}
                     <div className="space-y-3">
                       <Label className="text-zinc-200 font-semibold text-sm">Select Brushed Finish</Label>
                       <div className="grid gap-2">
@@ -586,7 +601,6 @@ function SmartNfcCardsInner() {
                       </div>
                     </div>
 
-                    {/* Logo upload & branding text */}
                     <div className="space-y-4">
                       <Label className="text-zinc-200 font-semibold text-sm">Logo & Engraving</Label>
                       
@@ -604,15 +618,33 @@ function SmartNfcCardsInner() {
 
                       <div className="space-y-2">
                         <Label className="text-zinc-400 text-xs">Upload Vector SVG / High-Res Logo</Label>
-                        <div className="border border-dashed border-zinc-800 bg-zinc-950 rounded-lg p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-zinc-900/40 transition">
-                          <Upload className="size-5 text-zinc-600 mb-2" />
-                          <p className="text-xxs font-medium text-zinc-300">Drag logo files here or browse</p>
-                          <p className="text-[10px] text-zinc-600 mt-1">SVG, PNG, AI up to 10MB</p>
+                        <div
+                          onClick={() => fileInputRef.current?.click()}
+                          className="border border-dashed border-zinc-800 bg-zinc-950 rounded-lg p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-zinc-900/40 transition"
+                        >
+                          {logoPreview ? (
+                            <Image src={logoPreview} alt="Logo preview" width={120} height={64} className="max-h-16 object-contain rounded" unoptimized />
+                          ) : (
+                            <>
+                              <Upload className="size-5 text-zinc-600 mb-2" />
+                              <p className="text-xxs font-medium text-zinc-300">Drag logo files here or browse</p>
+                              <p className="text-[10px] text-zinc-600 mt-1">SVG, PNG, AI up to 10MB</p>
+                            </>
+                          )}
                         </div>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*,.svg"
+                          className="hidden"
+                          onChange={handleFileSelect}
+                        />
+                        {logoFile && (
+                          <p className="text-[10px] text-zinc-500">{logoFile.name} ({(logoFile.size / 1024).toFixed(1)} KB)</p>
+                        )}
                       </div>
                     </div>
 
-                    {/* Quantity / Billing details */}
                     <div className="space-y-4 bg-zinc-950/40 p-4 rounded-lg border border-zinc-800 flex flex-col justify-between">
                       <div className="space-y-3">
                         <Label className="text-zinc-200 font-semibold text-sm">Select Quantity & Billing</Label>
@@ -641,7 +673,7 @@ function SmartNfcCardsInner() {
                       <div className="space-y-2 pt-4 border-t border-zinc-800/80">
                         <div className="flex justify-between text-xs">
                           <span className="text-zinc-400">Physical Cards Subtotal:</span>
-                          <span className="text-white font-mono">${(29.99 * cardQuantity).toFixed(2)}</span>
+                          <span className="text-white font-mono">${cardTotal.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-xs">
                           <span className="text-zinc-400">NFC Cloud Connection:</span>
@@ -649,7 +681,7 @@ function SmartNfcCardsInner() {
                         </div>
                         <div className="flex justify-between text-sm font-bold border-t border-zinc-850 pt-2 text-white">
                           <span>Total to Pay:</span>
-                          <span>${(29.99 * cardQuantity).toFixed(2)}</span>
+                          <span>${cardTotal.toFixed(2)}</span>
                         </div>
                       </div>
                     </div>
@@ -675,11 +707,12 @@ function SmartNfcCardsInner() {
                   Awesome! Your custom engraved smart metal card is now in production. We are printing your custom branding <b>{businessLogoName || "YOUR BRAND"}</b> right now.
                 </p>
                 <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono text-zinc-300 w-full text-center">
-                  Tracking Code: CD-NFC-{Math.floor(100000 + Math.random() * 900000)}
+                  Tracking Code: CD-NFC-{trackingCode}
                 </div>
                 <Button 
                   onClick={() => {
-                    setCheckoutStep("form");
+                    setFormStep("form");
+                    setDismissedCallback(true);
                     setBusinessLogoName("");
                   }} 
                   className="bg-indigo-600 hover:bg-indigo-500 text-white w-full"

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { createHmac } from "crypto";
+import { timingSafeEqual } from "crypto";
 
 const FLW_SECRET_HASH = process.env.FLW_WEBHOOK_HASH;
 
@@ -8,7 +8,13 @@ export async function POST(req: NextRequest) {
   const body = await req.text();
   const signature = req.headers.get("verif-hash");
 
-  if (!signature || signature !== FLW_SECRET_HASH) {
+  if (!signature || !FLW_SECRET_HASH) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  const sigBuf = Buffer.from(signature);
+  const hashBuf = Buffer.from(FLW_SECRET_HASH);
+  if (sigBuf.length !== hashBuf.length || !timingSafeEqual(sigBuf, hashBuf)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -49,7 +55,7 @@ export async function POST(req: NextRequest) {
     userId: meta.userId,
     cardName: meta.cardName,
     redirectType: (meta.redirectType || "CUSTOM_URL").toUpperCase(),
-    targetUrl: meta.targetUrl || "",
+      destinationUrl: meta.destinationUrl || "",
     cardSlug: `card-${Date.now().toString(36)}`,
     isActive: true,
   });

@@ -13,25 +13,14 @@ import {
   addMonths,
   subMonths,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, Filter } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSocialMediaStore } from "@/hooks/useSocialMediaStore";
-import { Platform as SocialPlatform, PostStatus } from "@/types/social";
-
-type Platform =
-  | "instagram"
-  | "facebook"
-  | "linkedin"
-  | "youtube"
-  | "tiktok"
-  | "x"
-  | "threads"
-  | "pinterest"
-  | "bluesky"
-  | "mastodon";
+import { Post, Platform } from "@/types/social";
+import { NewPostDialog } from "@/components/social-manager/new-post-dialog";
 
 type ContentStatus = "scheduled" | "published" | "draft" | "backlog";
 type ContentType = "post" | "reel" | "story" | "carousel" | "video" | "short" | "pin";
@@ -44,10 +33,6 @@ interface ContentItem {
   status: ContentStatus;
   type: ContentType;
 }
-
-// ---------------------------------------------------------------------------
-// Platform config
-// ---------------------------------------------------------------------------
 
 const PLATFORM_COLORS: Record<Platform, string> = {
   instagram: "#E4405F",
@@ -65,8 +50,8 @@ const PLATFORM_COLORS: Record<Platform, string> = {
 interface PlatformFilterConfig {
   key: Platform | "all";
   label: string;
-  color: string; // tailwind ring / dot color fallback
-  dot: string; // hex for the dot
+  color: string;
+  dot: string;
 }
 
 const PLATFORM_FILTERS: PlatformFilterConfig[] = [
@@ -80,59 +65,67 @@ const PLATFORM_FILTERS: PlatformFilterConfig[] = [
   { key: "threads", label: "Threads", color: "bg-zinc-400", dot: "#000000" },
 ];
 
-// ---------------------------------------------------------------------------
-// Mock data – helpers to build dates relative to *now*
-// ---------------------------------------------------------------------------
+function asContentStatus(value: string): ContentStatus {
+  switch (value) {
+    case "scheduled":
+    case "published":
+    case "draft":
+    case "backlog":
+      return value;
+    default:
+      return "draft";
+  }
+}
+
+function asContentType(value: string): ContentType {
+  switch (value.toLowerCase()) {
+    case "reel":
+      return "reel";
+    case "story":
+      return "story";
+    case "carousel":
+      return "carousel";
+    case "video":
+      return "video";
+    case "short":
+      return "short";
+    case "pin":
+      return "pin";
+    default:
+      return "post";
+  }
+}
 
 function buildContentFromStore(
-  storePosts: Record<string, import("@/types/social").Post[]>
+  storePosts: Record<string, Post[]>
 ): ContentItem[] {
   const items: ContentItem[] = [];
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  let dayIdx = 2;
 
   for (const [platform, posts] of Object.entries(storePosts)) {
     for (const post of posts) {
-      let date: Date;
-      if (post.scheduledDate) {
-        const parts = post.scheduledDate.split("-");
-        date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-      } else {
-        date = new Date(y, m, dayIdx);
-        dayIdx = ((dayIdx - 1 + 3) % 28) + 1;
-      }
+      if (!post.scheduledDate) continue;
+
+      const parts = post.scheduledDate.split("-");
+      const date = new Date(
+        Number(parts[0]),
+        Number(parts[1]) - 1,
+        Number(parts[2])
+      );
 
       items.push({
         id: post.id,
-        title: post.caption.slice(0, 40) + (post.caption.length > 40 ? "..." : ""),
+        title:
+          post.caption.slice(0, 40) + (post.caption.length > 40 ? "..." : ""),
         platform: platform as Platform,
         date,
-        status: post.status as ContentStatus,
-        type: (post.type.toLowerCase() === "reel"
-          ? "reel"
-          : post.type.toLowerCase() === "story"
-            ? "story"
-            : post.type.toLowerCase() === "carousel"
-              ? "carousel"
-              : post.type.toLowerCase() === "video"
-                ? "video"
-                : post.type.toLowerCase() === "short"
-                  ? "short"
-                  : post.type.toLowerCase() === "pin"
-                    ? "pin"
-                    : "post") as ContentType,
+        status: asContentStatus(post.status),
+        type: asContentType(post.type),
       });
     }
   }
 
   return items;
 }
-
-// ---------------------------------------------------------------------------
-// Status badge styling
-// ---------------------------------------------------------------------------
 
 function statusClasses(status: ContentStatus): string {
   switch (status) {
@@ -147,25 +140,24 @@ function statusClasses(status: ContentStatus): string {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [activeFilters, setActiveFilters] = useState<Set<Platform | "all">>(
     new Set(["all"])
   );
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
-  const { posts, fetchPosts } = useSocialMediaStore();
+  const { posts, fetchPosts, addPost } = useSocialMediaStore();
 
   useEffect(() => {
-    fetchPosts();
-  }, []);
+    fetchPosts().catch(() => {});
+  }, [fetchPosts]);
 
   const allContent = useMemo(() => buildContentFromStore(posts), [posts]);
 
-  // ---- filter logic ----
+  const handlePostCreated = (platform: Platform, post: Omit<Post, "id">) => {
+    addPost(platform, post);
+  };
+
   const toggleFilter = (key: Platform | "all") => {
     setActiveFilters((prev) => {
       const next = new Set<Platform | "all">(prev);
@@ -185,12 +177,9 @@ export default function CalendarPage() {
 
   const filteredContent = useMemo(() => {
     if (activeFilters.has("all")) return allContent;
-    return allContent.filter((item) =>
-      activeFilters.has(item.platform)
-    );
+    return allContent.filter((item) => activeFilters.has(item.platform));
   }, [allContent, activeFilters]);
 
-  // ---- calendar grid dates ----
   const calendarDays = useMemo(() => {
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
@@ -199,7 +188,6 @@ export default function CalendarPage() {
     return eachDayOfInterval({ start: gridStart, end: gridEnd });
   }, [currentMonth]);
 
-  // ---- items keyed by date string for fast lookup ----
   const itemsByDate = useMemo(() => {
     const map = new Map<string, ContentItem[]>();
     for (const item of filteredContent) {
@@ -215,16 +203,12 @@ export default function CalendarPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 p-4 md:p-8">
-      {/* ----------------------------------------------------------------- */}
-      {/* Page Header                                                        */}
-      {/* ----------------------------------------------------------------- */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold tracking-tight text-white">
             Content Calendar
           </h1>
 
-          {/* Month navigation */}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -250,15 +234,12 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <Button size="default" className="gap-1.5">
-          <Plus className="size-4" />
-          Add Content
-        </Button>
+        <NewPostDialog
+          activePlatform="all"
+          onPostCreated={handlePostCreated}
+        />
       </div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Platform Filters                                                   */}
-      {/* ----------------------------------------------------------------- */}
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <Filter className="size-4 text-zinc-500" />
         {PLATFORM_FILTERS.map((pf) => {
@@ -288,13 +269,9 @@ export default function CalendarPage() {
         })}
       </div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Calendar Grid                                                      */}
-      {/* ----------------------------------------------------------------- */}
       <Card className="border-zinc-800 bg-zinc-900 ring-zinc-800">
         <CardHeader className="border-b border-zinc-800 pb-0">
           <CardTitle className="sr-only">Monthly calendar</CardTitle>
-          {/* Day-of-week headers */}
           <div className="grid grid-cols-7">
             {dayNames.map((name) => (
               <div
@@ -324,7 +301,6 @@ export default function CalendarPage() {
                     today && "ring-1 ring-inset ring-sky-500/60"
                   )}
                 >
-                  {/* Day number */}
                   <span
                     className={cn(
                       "mb-1 inline-flex size-6 items-center justify-center rounded-full text-xs font-medium",
@@ -336,7 +312,6 @@ export default function CalendarPage() {
                     {format(day, "d")}
                   </span>
 
-                  {/* Content chips */}
                   <div className="flex flex-col gap-0.5">
                     {items.slice(0, 3).map((item) => (
                       <button
@@ -376,9 +351,6 @@ export default function CalendarPage() {
         </CardContent>
       </Card>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Selected item detail panel                                         */}
-      {/* ----------------------------------------------------------------- */}
       {selectedItem && (
         <Card className="mt-4 border-zinc-800 bg-zinc-900 ring-zinc-800">
           <CardHeader>
@@ -399,7 +371,10 @@ export default function CalendarPage() {
               </Badge>
               <Badge
                 variant="outline"
-                className={cn("capitalize", statusClasses(selectedItem.status))}
+                className={cn(
+                  "capitalize",
+                  statusClasses(selectedItem.status)
+                )}
               >
                 {selectedItem.status}
               </Badge>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { nfcCardPostSchema, nfcCardPatchSchema, validateBody } from "@/lib/validations/schemas";
 
 export async function GET(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -26,8 +27,9 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  if (!body.cardSlug || !body.cardName || !body.destinationUrl) {
-    return NextResponse.json({ error: "cardSlug, cardName, destinationUrl required" }, { status: 400 });
+  const parsed = validateBody(nfcCardPostSchema, body);
+  if ("error" in parsed) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
   const { data, error } = await supabase
@@ -35,11 +37,7 @@ export async function POST(req: NextRequest) {
     .insert({
       id: crypto.randomUUID(),
       userId: user.id,
-      cardSlug: body.cardSlug,
-      cardName: body.cardName,
-      destinationUrl: body.destinationUrl,
-      color: body.color || "MATTE_BLACK",
-      redirectType: body.redirectType || "CUSTOM_URL",
+      ...parsed.data,
     })
     .select()
     .single();
@@ -56,12 +54,17 @@ export async function PATCH(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  const parsed = validateBody(nfcCardPatchSchema, body);
+  if ("error" in parsed) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
+  const { id, ...updateFields } = parsed.data;
 
   const { data, error } = await supabase
     .from("NFCCard")
-    .update(body)
-    .eq("id", body.id)
+    .update(updateFields)
+    .eq("id", id)
     .eq("userId", user.id)
     .select()
     .single();
@@ -70,22 +73,6 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json(data);
 }
 
-export async function DELETE(req: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { id } = await req.json();
-  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-
-  const { error } = await supabase
-    .from("NFCCard")
-    .delete()
-    .eq("id", id)
-    .eq("userId", user.id);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+export async function DELETE(_req: NextRequest) {
+  return NextResponse.json({ error: "Use DELETE /api/nfc/cards/[id]" }, { status: 400 });
 }

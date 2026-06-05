@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { parseOmniSocialInput, ConnectionType } from "@/lib/api/omnisocial-proxy";
 import { encrypt, decrypt } from "@/lib/encryption";
+import { omnisocialConfigPutSchema, validateBody } from "@/lib/validations/schemas";
 
 function maskApiKey(key: string) {
   if (key.length <= 4) return "****";
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
   if (!config || config.status !== "ACTIVE") {
     let maskedKey = null;
     if (config?.apiKeyEncrypted) {
-      try { maskedKey = maskApiKey(decrypt(config.apiKeyEncrypted)); } catch { maskedKey = maskApiKey(config.apiKeyEncrypted); }
+      try { maskedKey = maskApiKey(decrypt(config.apiKeyEncrypted)); } catch { maskedKey = "****"; }
     }
     return NextResponse.json({
       status: config?.status ?? "NOT_CONFIGURED",
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
   }
 
   let decryptedKey: string;
-  try { decryptedKey = decrypt(config.apiKeyEncrypted); } catch { decryptedKey = config.apiKeyEncrypted; }
+  try { decryptedKey = decrypt(config.apiKeyEncrypted); } catch { return NextResponse.json({ error: "Failed to decrypt API key" }, { status: 500 }); }
 
   return NextResponse.json({
     status: config.status,
@@ -70,16 +71,18 @@ export async function PUT(req: NextRequest) {
   }
 
   const body = await req.json();
-  const rawInput = body.apiKey ?? body.input ?? "";
-  if (!rawInput || typeof rawInput !== "string") {
-    return NextResponse.json({ error: "API key or MCP URL is required" }, { status: 400 });
+  const parsed = validateBody(omnisocialConfigPutSchema, body);
+  if ("error" in parsed) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
+
+  const rawInput = parsed.data.apiKey || parsed.data.input || "";
 
   const { apiKey, mcpUrl } = parseOmniSocialInput(rawInput);
   const connectionType: ConnectionType = mcpUrl ? "mcp_url" : "api_key";
 
   let encryptedKey: string;
-  try { encryptedKey = encrypt(apiKey); } catch { encryptedKey = apiKey; }
+  try { encryptedKey = encrypt(apiKey); } catch { return NextResponse.json({ error: "Failed to encrypt API key" }, { status: 500 }); }
 
   const { data: existing } = await supabase
     .from("OmniSocialConfig")
@@ -120,7 +123,7 @@ export async function PUT(req: NextRequest) {
   }
 
   let displayKey: string;
-  try { displayKey = decrypt(result.apiKeyEncrypted); } catch { displayKey = result.apiKeyEncrypted; }
+  try { displayKey = decrypt(result.apiKeyEncrypted); } catch { return NextResponse.json({ error: "Failed to decrypt stored key for display" }, { status: 500 }); }
 
   return NextResponse.json({
     status: result.status,

@@ -2,6 +2,7 @@
 
 import { Post, Platform, PLATFORM_COLORS } from "@/types/social";
 import { Card, CardContent } from "@/components/ui/card";
+import { PostTypeBadge } from "@/components/social-manager/post-type-badge";
 import { cn } from "@/lib/utils";
 import {
   Heart,
@@ -14,19 +15,6 @@ import {
   RefreshCw,
   AlertCircle,
 } from "lucide-react";
-
-const PLATFORM_BADGE_COLORS: Record<Platform, string> = {
-  instagram: "bg-pink-500/20 text-pink-400",
-  facebook: "bg-blue-500/20 text-blue-400",
-  linkedin: "bg-blue-600/20 text-blue-400",
-  threads: "bg-zinc-500/20 text-zinc-300",
-  tiktok: "bg-cyan-400/20 text-cyan-400",
-  youtube: "bg-red-500/20 text-red-400",
-  pinterest: "bg-red-600/20 text-red-400",
-  bluesky: "bg-sky-500/20 text-sky-400",
-  mastodon: "bg-violet-500/20 text-violet-400",
-  x: "bg-sky-400/20 text-sky-300",
-};
 
 function formatDate(dateStr?: string): string {
   if (!dateStr) return "\u2014";
@@ -62,8 +50,6 @@ interface PostCardProps {
 }
 
 export function PostCard({ post, onDelete }: PostCardProps) {
-  const badgeColor = PLATFORM_BADGE_COLORS[post.platform];
-
   return (
     <Card
       className={cn(
@@ -77,14 +63,7 @@ export function PostCard({ post, onDelete }: PostCardProps) {
 
       <CardContent className="relative p-3 space-y-2.5">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span
-            className={cn(
-              "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-              badgeColor
-            )}
-          >
-            {post.type}
-          </span>
+          <PostTypeBadge platform={post.platform} type={post.type} />
 
           {post.omnisocialStatus === "synced" && (
             <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium">

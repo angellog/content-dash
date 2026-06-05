@@ -11,16 +11,16 @@ interface PlatformStatsProps {
     totalPosts: number
     scheduled: number
     engagementRate: number
-    followerCount: number
+    followerCount: number | string
   }
 }
 
 const METRICS = [
-  { key: "totalPosts", label: "Total Posts", icon: FileText, trend: "+12%", format: (v: number) => v.toLocaleString() },
-  { key: "scheduled", label: "Scheduled", icon: Clock, trend: "+8%", format: (v: number) => v.toLocaleString() },
-  { key: "engagementRate", label: "Engagement Rate", icon: Heart, trend: "+5.2%", format: (v: number) => `${v}%` },
-  { key: "followerCount", label: "Followers", icon: Users, trend: "+3.1%", format: (v: number) => v.toLocaleString() },
-] as const
+  { key: "totalPosts" as const, label: "Total Posts", icon: FileText, trend: "+12%", format: (v: number | string) => typeof v === "string" ? v : v.toLocaleString() },
+  { key: "scheduled" as const, label: "Scheduled", icon: Clock, trend: "+8%", format: (v: number | string) => typeof v === "string" ? v : v.toLocaleString() },
+  { key: "engagementRate" as const, label: "Engagement Rate", icon: Heart, trend: "+5.2%", format: (v: number | string) => typeof v === "string" ? v : `${v}%` },
+  { key: "followerCount" as const, label: "Followers", icon: Users, trend: "+3.1%", format: (v: number | string) => typeof v === "string" ? v : v.toLocaleString() },
+]
 
 export function PlatformStats({ platform, stats }: PlatformStatsProps) {
   const accent = platform !== "all" ? PLATFORM_CONFIG[platform as Platform].color : null
