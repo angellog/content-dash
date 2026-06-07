@@ -40,7 +40,31 @@ export const nfcCardPatchSchema = z.object({
   color: z.enum(["MATTE_BLACK", "BRUSHED_GOLD", "STERLING_SILVER"]).optional(),
   redirectType: z.enum(["INSTAGRAM", "LINK_IN_BIO", "CUSTOM_URL", "WHATSAPP_CHAT"]).optional(),
   isActive: z.boolean().optional(),
+  profileSlug: z.string().regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, "Slug must be lowercase alphanumeric with hyphens").optional(),
 }).strict();
+
+export const nfcActivateSchema = z.object({
+  activationCode: z.string().min(1),
+});
+
+export const nfcProfileUpsertSchema = z.object({
+  cardId: z.string().min(1),
+  displayName: z.string().min(1).max(100),
+  bio: z.string().max(500).optional(),
+  avatarUrl: z.string().url().optional().or(z.literal("")),
+  theme: z.string().max(50).optional().default("default"),
+  links: z.array(z.object({
+    id: z.string().optional(),
+    type: z.enum([
+      "instagram", "whatsapp", "google_review", "phone", "email",
+      "website", "maps", "shop", "booking", "youtube", "twitter",
+      "linkedin", "facebook", "custom",
+    ]),
+    label: z.string().min(1).max(100),
+    url: z.string().min(1),
+    linkOrder: z.int().min(0).optional().default(0),
+  })).optional().default([]),
+});
 
 export const whatsappCampaignPostSchema = z.object({
   campaignName: z.string().min(1).max(200),

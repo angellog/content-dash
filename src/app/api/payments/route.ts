@@ -49,7 +49,43 @@ export async function POST(req: NextRequest) {
 
   const txRef = `CD-NFC-${Date.now()}-${user.id.slice(0, 8)}`;
 
+  function generateActivationCode(): string {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
+  }
+
+  function generateSlug(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `card-${Date.now().toString(36)}`;
+  }
+
+  const activationCode = generateActivationCode();
+  const profileSlug = cardName ? generateSlug(cardName) : `card-${Date.now().toString(36)}`;
+  const cardSlug = `nfc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
   try {
+    const { error: cardError } = await supabase
+      .from("NFCCard")
+      .insert({
+        id: crypto.randomUUID(),
+        userId: user.id,
+        cardSlug,
+        cardName: cardName || `NFC Card - ${cardColor}`,
+        color: cardColor.replace(/-/g, "_").toUpperCase(),
+        redirectType: redirectType || "CUSTOM_URL",
+        destinationUrl: destinationUrl || "https://contentdash.ai",
+        isActive: false,
+        orderStatus: "ORDERED",
+        activationCode,
+        isActivated: false,
+        profileSlug,
+      });
+
+    if (cardError) {
+      return NextResponse.json({ error: "Failed to create card record" }, { status: 500 });
+    }
+
     const flwRes = await fetch(`${FLW_BASE}/payments`, {
       method: "POST",
       headers: {
@@ -89,6 +125,8 @@ export async function POST(req: NextRequest) {
         paymentLink: data.data.link,
         txRef,
         amount,
+        activationCode,
+        profileSlug,
       });
     }
 

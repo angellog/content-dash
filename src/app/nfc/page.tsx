@@ -80,6 +80,7 @@ function SmartNfcCardsInner() {
 
   const [formStep, setFormStep] = useState("form");
   const [dismissedCallback, setDismissedCallback] = useState(false);
+  const [activationCode, setActivationCode] = useState<string | null>(null);
   const isPaymentSuccess = !dismissedCallback && searchParams.get("payment_callback") === "true" && searchParams.get("status") === "successful";
   const checkoutStep = isPaymentSuccess ? "success" : formStep;
 
@@ -184,6 +185,9 @@ function SmartNfcCardsInner() {
       if (res.ok) {
         const data = await res.json();
         if (data.paymentLink) {
+          if (data.activationCode) {
+            setActivationCode(data.activationCode);
+          }
           window.open(data.paymentLink, "_blank");
           toast.success("Payment window opened. Complete payment to finalize your order.");
         } else {
@@ -701,25 +705,54 @@ function SmartNfcCardsInner() {
               </form>
             ) : (
               <div className="p-8 flex flex-col items-center justify-center text-center space-y-4 max-w-md mx-auto">
-                <CheckCircle className="size-16 text-emerald-400 animate-bounce" />
-                <h3 className="text-xl font-bold text-white">NFC Order Placed!</h3>
-                <p className="text-sm text-zinc-400">
-                  Awesome! Your custom engraved smart metal card is now in production. We are printing your custom branding <b>{businessLogoName || "YOUR BRAND"}</b> right now.
-                </p>
-                <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono text-zinc-300 w-full text-center">
-                  Tracking Code: CD-NFC-{trackingCode}
-                </div>
-                <Button 
-                  onClick={() => {
-                    setFormStep("form");
-                    setDismissedCallback(true);
-                    setBusinessLogoName("");
-                  }} 
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white w-full"
-                >
-                  Order Another Card
-                </Button>
-              </div>
+                 <CheckCircle className="size-16 text-emerald-400 animate-bounce" />
+                 <h3 className="text-xl font-bold text-white">NFC Order Placed!</h3>
+                 <p className="text-sm text-zinc-400">
+                   Awesome! Your custom engraved smart metal card is now in production. We are printing your custom branding <b>{businessLogoName || "YOUR BRAND"}</b> right now.
+                 </p>
+                 <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono text-zinc-300 w-full text-center">
+                   Tracking Code: CD-NFC-{trackingCode}
+                 </div>
+
+                 {activationCode && (
+                   <div className="w-full p-4 bg-indigo-950/30 border border-indigo-500/30 rounded-lg space-y-3">
+                     <div className="text-center">
+                       <p className="text-xs text-indigo-400 font-medium uppercase tracking-wider">Your Activation Code</p>
+                       <p className="text-2xl font-mono font-bold text-indigo-300 mt-1 tracking-widest">{activationCode}</p>
+                       <p className="text-[10px] text-zinc-500 mt-1">Enter this code in the Smart Profile Editor to activate your card</p>
+                     </div>
+                   </div>
+                 )}
+
+                 <div className="w-full p-4 bg-zinc-950 border border-zinc-800 rounded-lg space-y-3">
+                   <div className="flex items-center gap-2">
+                     <Sparkles className="size-4 text-indigo-400" />
+                     <p className="text-sm font-semibold text-zinc-200">Set up your Smart Profile</p>
+                   </div>
+                   <p className="text-xs text-zinc-400">
+                     Create your digital profile so your card is ready to go. Add your links, social media, and contact info.
+                   </p>
+                   <Button
+                     onClick={() => window.location.href = "/nfc/editor"}
+                     className="bg-indigo-600 hover:bg-indigo-500 text-white w-full"
+                   >
+                     <Sparkles className="size-4 mr-2" /> Open Smart Profile Editor
+                   </Button>
+                 </div>
+
+                 <Button 
+                   onClick={() => {
+                     setFormStep("form");
+                     setDismissedCallback(true);
+                     setBusinessLogoName("");
+                     setActivationCode(null);
+                   }} 
+                   variant="outline"
+                   className="border-zinc-700 text-zinc-400 hover:text-zinc-200 w-full"
+                 >
+                   Order Another Card
+                 </Button>
+               </div>
             )}
           </Card>
         </section>

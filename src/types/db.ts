@@ -32,6 +32,11 @@ export interface OmniSocialConfig {
   updatedAt: string;
 }
 
+export type NFCLinkType = 
+  | "instagram" | "whatsapp" | "google_review" | "phone" | "email"
+  | "website" | "maps" | "shop" | "booking" | "youtube" | "twitter"
+  | "linkedin" | "facebook" | "custom";
+
 export interface NFCCard {
   id: string;
   userId: string;
@@ -43,6 +48,30 @@ export interface NFCCard {
   isActive: boolean;
   orderStatus: NFCOrderStatus;
   flwTransactionId: string | null;
+  activationCode: string | null;
+  isActivated: boolean;
+  profileSlug: string | null;
+}
+
+export interface NFCProfile {
+  id: string;
+  cardId: string;
+  displayName: string;
+  bio: string | null;
+  avatarUrl: string | null;
+  theme: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NFCLink {
+  id: string;
+  profileId: string;
+  type: NFCLinkType;
+  label: string;
+  url: string;
+  linkOrder: number;
+  createdAt: string;
 }
 
 export interface NFCTapEvent {

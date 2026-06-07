@@ -4,6 +4,35 @@ All notable changes to ContentDash are documented in this file. The format follo
 
 ---
 
+## [2.2.0] - 2026-06-07
+
+### Added
+
+**NFC Smart Profile System**
+
+ContentDash now supports NFC Smart Profiles — when someone taps an activated NFC card, they see a beautiful public profile page with the card owner's name, bio, avatar, and customizable social/contact links instead of a simple URL redirect.
+
+- **Activation code flow**: purchasing an NFC card generates an 8-character alphanumeric activation code; user enters the code in the Smart Profile Editor to activate the card and link it to their account
+- **Smart Profile Editor** (`/nfc/editor`): step-by-step UI — enter activation code → edit profile (display name, bio, avatar) → add/reorder/remove links (14 types) → QR code preview → save
+- **Public profile page** (`/p/[profileSlug]`): mobile-first layout with radial glow background, avatar, name, bio, and styled link buttons with type-specific emoji icons and colors; serves OG metadata for social sharing
+- **Avatar upload** (`/api/nfc/avatar`): file upload to Supabase Storage bucket `nfc-avatars`, public read access
+- **Activation endpoint** (`/api/nfc/activate`): validates activation code, marks card as activated, links to user account
+- **Profile CRUD** (`/api/nfc/profile`): GET fetches profile + links by cardId; PUT upserts profile and replaces all links; auto-generates `profileSlug` from displayName
+- **Tap route update** (`/t/[cardSlug]`): unactivated cards show styled HTML landing page; activated cards with `profileSlug` redirect to `/p/[profileSlug]`; activated cards without profile fall back to `destinationUrl`
+- **Database migration** (`supabase/migrations/20260607_add_nfc_profile.sql`): `NFCProfile` table (cardId PK, displayName, bio, avatarUrl, theme), `NFCLink` table (id, cardId FK, type with CHECK constraint for 14 types, label, url, linkOrder), activation columns on `NFCCard` (`activationCode`, `isActivated`, `profileSlug`), RLS policies (owner CRUD via cardId→NFCCard→userId join, public read for activated cards), indexes
+- **14 link types**: instagram, whatsapp, google_review, phone, email, website, maps, shop, booking, youtube, twitter, linkedin, facebook, custom — each with emoji icon in editor and colored styling on public page
+- **QR code preview** in editor: generates QR code pointing to public profile URL using `qrcode` package
+- **NFC ordering page update**: success state prominently shows activation code with "Set up your Smart Profile" prompt and link to editor
+- **`/p/` public route**: added to proxy public paths (no auth required)
+
+### Changed
+
+- **`src/types/db.ts`**: added `NFCLinkType`, `NFCProfile`, `NFCLink` interfaces; `NFCCard` extended with `activationCode`, `isActivated`, `profileSlug`
+- **`src/lib/validations/schemas.ts`**: added `nfcActivateSchema`, `nfcProfileUpsertSchema` with nested links array validation
+- **`src/app/api/payments/route.ts`**: generates `activationCode` (8-char alphanumeric), `profileSlug`, `cardSlug` on order; creates NFCCard row before Flutterwave call; returns codes in response
+
+---
+
 ## [2.1.0] - 2026-06-07
 
 ### Added

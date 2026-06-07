@@ -866,3 +866,112 @@ A: No — keys are encrypted at rest and only displayed as masked (`****1234`) i
 
 **Q: "Rate limit exceeded" (429 error)**
 A: You've made more than 10 agent requests in a minute. Wait 60 seconds and try again. The response headers include `X-RateLimit-Reset` with the reset timestamp.
+
+### NFC Smart Profiles
+
+**Q: "Invalid activation code"**
+A: Make sure you're entering the 8-character code exactly as shown on the order confirmation page. Codes are case-insensitive. If you lost the code, check the NFC page in ContentDash — it may still be displayed.
+
+**Q: "Card not activated" page appears when tapping**
+A: The NFC card hasn't been activated yet. Enter the activation code in the Smart Profile Editor at `/nfc/editor`.
+
+**Q: How do I change my public profile URL?**
+A: The `profileSlug` is auto-generated from your display name when you first save. To change it, update your display name and re-save — the slug will regenerate.
+
+**Q: How many links can I add?**
+A: Up to 20 links per profile, in 14 types: instagram, whatsapp, google_review, phone, email, website, maps, shop, booking, youtube, twitter, linkedin, facebook, custom.
+
+**Q: How do I upload an avatar?**
+A: In the Smart Profile Editor, click the avatar area to upload an image file. It's stored in Supabase Storage (`nfc-avatars` bucket). You can also paste a URL instead.
+
+---
+
+## NFC Smart Profile System
+
+### Overview
+
+When someone taps an activated NFC card with a Smart Profile, they see a public profile page (`/p/[profileSlug]`) with the owner's name, bio, avatar, and social/contact links — instead of a simple URL redirect.
+
+### Flow
+
+```
+Purchase NFC Card → Receive activation code
+                    ↓
+Enter code in /nfc/editor → Card activated → Profile editor
+                    ↓
+Edit profile (name, bio, avatar, links) → Save → Public profile live at /p/[slug]
+                    ↓
+Someone taps card → /t/[cardSlug] → redirect to /p/[slug]
+```
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/nfc/activate` | POST | Validate activation code, activate card, link to user |
+| `/api/nfc/profile` | GET | Fetch profile + links by cardId |
+| `/api/nfc/profile` | PUT | Upsert profile + replace all links |
+| `/api/nfc/avatar` | POST | Upload avatar file to Supabase Storage |
+
+### Database Schema
+
+**NFCProfile** — card-level profile (1:1 with NFCCard)
+
+| Column | Type | Notes |
+|---|---|---|
+| cardId | UUID (PK, FK→NFCCard) | One profile per card |
+| displayName | TEXT NOT NULL | Shown on public page |
+| bio | TEXT | Optional |
+| avatarUrl | TEXT | Storage URL or external URL |
+| theme | TEXT DEFAULT 'default' | Reserved for future themes |
+| createdAt | TIMESTAMPTZ | |
+| updatedAt | TIMESTAMPTZ | |
+
+**NFCLink** — social/contact links belonging to a profile
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID (PK) | Auto-generated |
+| cardId | UUID (FK→NFCProfile) | Links belong to a profile |
+| type | TEXT | One of 14 types (CHECK constraint) |
+| label | TEXT | Display text |
+| url | TEXT | Target URL/phone/email |
+| linkOrder | INTEGER | Sort order |
+| createdAt | TIMESTAMPTZ | |
+
+**NFCCard additions** (existing table, new columns)
+
+| Column | Type | Notes |
+|---|---|---|
+| activationCode | VARCHAR(8) UNIQUE | Generated on purchase |
+| isActivated | BOOLEAN DEFAULT false | Set true on activation |
+| profileSlug | VARCHAR UNIQUE | Auto-generated from displayName |
+
+### Link Types
+
+| Type | Icon | Color |
+|---|---|---|
+| instagram | 📸 | pink-500 |
+| whatsapp | 📱 | emerald-500 |
+| google_review | ⭐ | yellow-500 |
+| phone | 📞 | blue-500 |
+| email | 📧 | violet-500 |
+| website | 🌐 | cyan-500 |
+| maps | 📍 | orange-500 |
+| shop | 🛍️ | rose-500 |
+| booking | 📅 | teal-500 |
+| youtube | ▶️ | red-500 |
+| twitter | 🐦 | sky-500 |
+| linkedin | 💼 | blue-600 |
+| facebook | 📘 | blue-500 |
+| custom | 🔗 | zinc-400 |
+
+### RLS Policies
+
+- **Owner CRUD**: Users can insert/update/delete their own profiles and links (via `cardId→NFCCard→userId` join)
+- **Public read**: Anyone can read profiles/links for activated cards that have a `profileSlug`
+- **Avatar bucket**: `nfc-avatars` storage bucket is publicly readable; uploads require authentication
+
+### Public Routes
+
+`/p/[profileSlug]` and `/docs` are public — no auth required. Configured in `src/proxy.ts` under `PUBLIC_PATHS`.
