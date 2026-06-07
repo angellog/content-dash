@@ -6,8 +6,11 @@ export const agentExecuteSchema = z.object({
 });
 
 export const agentConfigPutSchema = z.object({
+  agentFramework: z.enum(["openclaw", "hermes"]).optional().default("openclaw"),
   llmProvider: z.enum(["openai", "anthropic", "gemini"]).optional().default("openai"),
   llmApiKey: z.string().min(1).optional(),
+  hermesEndpointUrl: z.string().url("Invalid Hermes endpoint URL").optional().or(z.literal("")),
+  hermesApiKey: z.string().min(1).optional(),
   twilioAccountSid: z.string().optional(),
   twilioAuthToken: z.string().optional(),
   twilioWhatsappNumber: z.string().optional(),

@@ -58,11 +58,16 @@ export interface NFCTapEvent {
   longitude: number | null;
 }
 
+export type AgentFramework = "openclaw" | "hermes";
+
 export interface AgentConfig {
   id: string;
   userId: string;
   llmProvider: string;
   llmApiKeyEncrypted: string | null;
+  agentFramework: AgentFramework;
+  hermesEndpointUrl: string | null;
+  hermesApiKeyEncrypted: string | null;
   twilioAccountSid: string | null;
   twilioAuthTokenEncrypted: string | null;
   twilioWhatsappNumber: string | null;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createHmac, timingSafeEqual } from "crypto";
 import { decrypt } from "@/lib/encryption";
-import { callLLM, SYSTEM_PROMPT, LLMProvider, AgentMessage } from "@/lib/llm";
+import { callLLM, callHermesAgent, SYSTEM_PROMPT, LLMProvider, HermesConfig, AgentMessage } from "@/lib/llm";
 import { AGENT_TOOLS, AgentToolName } from "../tools";
 import { executeTool } from "../executor";
 
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
   const { data: agentConfigRow } = await supabase
     .from("AgentConfig")
-    .select("userId, isActive, twilioWhatsappNumber, llmProvider, llmApiKeyEncrypted")
+    .select("userId, isActive, twilioWhatsappNumber, llmProvider, llmApiKeyEncrypted, agentFramework, hermesEndpointUrl, hermesApiKeyEncrypted")
     .eq("isActive", true)
     .eq("twilioWhatsappNumber", matchedNumber)
     .single();
@@ -75,17 +75,23 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (!agentConfigRow.llmApiKeyEncrypted) {
-    return new Response(generateTwiml("LLM not configured. Add your API key in ContentDash settings."), {
+  if (!agentConfigRow.llmApiKeyEncrypted && (!agentConfigRow.hermesApiKeyEncrypted || !agentConfigRow.hermesEndpointUrl)) {
+    return new Response(generateTwiml("LLM not configured. Add your API key or Hermes endpoint in ContentDash settings."), {
       headers: { "Content-Type": "text/xml" },
     });
   }
 
+  const framework = (agentConfigRow.agentFramework as "openclaw" | "hermes") || "openclaw";
+
   let llmApiKey: string;
   try {
-    llmApiKey = decrypt(agentConfigRow.llmApiKeyEncrypted);
+    if (framework === "hermes") {
+      llmApiKey = agentConfigRow.hermesApiKeyEncrypted ? decrypt(agentConfigRow.hermesApiKeyEncrypted) : "";
+    } else {
+      llmApiKey = decrypt(agentConfigRow.llmApiKeyEncrypted);
+    }
   } catch {
-    return new Response(generateTwiml("Failed to decrypt LLM API key. Check encryption configuration."), {
+    return new Response(generateTwiml("Failed to decrypt API key. Check encryption configuration."), {
       headers: { "Content-Type": "text/xml" },
     });
   }
@@ -111,6 +117,17 @@ export async function POST(req: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+  const hermesConfig: HermesConfig | null = framework === "hermes" ? {
+    endpointUrl: agentConfigRow.hermesEndpointUrl || process.env.HERMES_DEFAULT_ENDPOINT_URL || "",
+    apiKey: llmApiKey || undefined,
+  } : null;
+
+  if (framework === "hermes" && !hermesConfig?.endpointUrl) {
+    return new Response(generateTwiml("Hermes endpoint URL not configured. Set it in ContentDash settings."), {
+      headers: { "Content-Type": "text/xml" },
+    });
+  }
+
   const messages: AgentMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: body },
@@ -125,7 +142,9 @@ export async function POST(req: NextRequest) {
     while (iteration < MAX_ITERATIONS) {
       iteration++;
 
-      const response = await callLLM(provider, llmApiKey, messages, AGENT_TOOLS);
+      const response = framework === "hermes" && hermesConfig
+        ? await callHermesAgent(hermesConfig, messages, AGENT_TOOLS)
+        : await callLLM(provider, llmApiKey, messages, AGENT_TOOLS);
 
       if (response.content) {
         finalContent = response.content;

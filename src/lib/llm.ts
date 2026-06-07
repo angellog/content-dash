@@ -1,4 +1,11 @@
-export type LLMProvider = "openai" | "anthropic" | "gemini";
+export type LLMProvider = "openai" | "anthropic" | "gemini" | "hermes";
+
+export interface HermesConfig {
+  endpointUrl: string;
+  apiKey?: string;
+}
+
+export type AgentFramework = "openclaw" | "hermes";
 
 export interface ToolDefinition {
   name: string;
@@ -61,9 +68,129 @@ export async function callLLM(
       return callAnthropic(apiKey, messages, tools);
     case "gemini":
       return callGemini(apiKey, messages, tools);
+    case "hermes":
+      throw new Error("Use callHermesAgent() for Hermes framework");
     default:
       throw new Error(`Unknown LLM provider: ${provider}`);
   }
+}
+
+export async function callHermesAgent(
+  config: HermesConfig,
+  messages: AgentMessage[],
+  tools: ToolDefinition[]
+): Promise<LLMResponse> {
+  const toolsJson = tools.map((t) => ({
+    type: "function" as const,
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    },
+  }));
+
+  const functionCallSchema = JSON.stringify({
+    title: "FunctionCall",
+    type: "object",
+    properties: {
+      name: { title: "Name", type: "string" },
+      arguments: { title: "Arguments", type: "object" },
+    },
+    required: ["name", "arguments"],
+  });
+
+  const systemContent = `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. If available tools are not relevant in assisting with user query, just respond in natural conversational language. Don't make assumptions about what values to plug into functions. After calling & executing the functions, you will be provided with function results within <tool_response></tool_response> XML tags.\n<tools>\n${JSON.stringify(toolsJson)}\n</tools>\nFor each function call return a JSON object, with the following pydantic model json schema:\n${functionCallSchema}\nEach function call should be enclosed within <tool_call>\n</tool_call> XML tags.\nYou must use <scratch_pad>\n</scratch_pad> XML tags to record your reasoning and planning before you call the functions as follows:\nExample:\n<scratch_pad>\nGoal: <state task assigned by user>\nActions:\n<if tool calls need to be generated:>\n- {result_var_name1} = functions.{function_name1}({param1}={value1},...)\n<if no tool call needs to be generated:> None\nObservation: <set observation 'None' with tool calls; plan final tools results summary when provided>\nReflection: <evaluate query-tool relevance and required parameters when tools called; analyze overall task status when observations made>\n</scratch_pad>`;
+
+  const chatmlMessages = buildChatMLMessages(systemContent, messages);
+
+  const baseUrl = config.endpointUrl.replace(/\/+$/, "");
+  const url = `${baseUrl}/v1/chat/completions`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (config.apiKey) {
+    headers["Authorization"] = `Bearer ${config.apiKey}`;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: "hermes",
+      messages: chatmlMessages,
+      temperature: 0.7,
+      max_tokens: 4096,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Hermes endpoint error: ${res.status} — ${err}`);
+  }
+
+  const data = await res.json();
+  const assistantContent = data.choices?.[0]?.message?.content ?? "";
+
+  return parseHermesResponse(assistantContent);
+}
+
+function buildChatMLMessages(
+  systemContent: string,
+  messages: AgentMessage[]
+): { role: string; content: string }[] {
+  const result: { role: string; content: string }[] = [];
+
+  result.push({ role: "system", content: systemContent });
+
+  for (const m of messages) {
+    if (m.role === "system") continue;
+
+    if (m.role === "assistant" && m.toolCalls?.length) {
+      let content = m.content || "";
+      for (const tc of m.toolCalls) {
+        content += `\n<tool_call>\n${JSON.stringify({ name: tc.name, arguments: tc.arguments })}\n</tool_call>`;
+      }
+      result.push({ role: "assistant", content });
+    } else if (m.role === "tool") {
+      result.push({
+        role: "tool",
+        content: `<tool_response>\n${JSON.stringify({ name: m.toolCallName, content: m.content })}\n</tool_response>`,
+      });
+    } else {
+      result.push({ role: m.role, content: m.content });
+    }
+  }
+
+  return result;
+}
+
+function parseHermesResponse(content: string): LLMResponse {
+  const toolCallRegex = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
+  const toolCalls: ToolCall[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = toolCallRegex.exec(content)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      toolCalls.push({
+        id: `hermes-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: parsed.name,
+        arguments: parsed.arguments ?? {},
+      });
+    } catch {}
+  }
+
+  const textContent = content
+    .replace(/<scratch_pad>[\s\S]*?<\/scratch_pad>/g, "")
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "")
+    .trim() || null;
+
+  return {
+    content: textContent,
+    toolCalls,
+    finishReason: toolCalls.length > 0 ? "tool_calls" : "stop",
+  };
 }
 
 async function callOpenAI(

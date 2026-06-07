@@ -39,6 +39,7 @@ export default function OpenClawAgent() {
   const [apiKey, setApiKey] = useState("");
   const [unlockPlan, setUnlockPlan] = useState("pro-monthly");
   const [error, setError] = useState<string | null>(null);
+  const [agentFramework, setAgentFramework] = useState<string>("openclaw");
 
   useEffect(() => {
     if (error) toast.error(error);
@@ -56,10 +57,17 @@ export default function OpenClawAgent() {
   useEffect(() => {
     async function checkConnection() {
       try {
-        const res = await fetch("/api/omnisocial/config");
-        if (res.ok) {
-          const data = await res.json();
+        const [configRes, agentRes] = await Promise.all([
+          fetch("/api/omnisocial/config"),
+          fetch("/api/agent/config"),
+        ]);
+        if (configRes.ok) {
+          const data = await configRes.json();
           if (data.connected) setIsUnlocked(true);
+        }
+        if (agentRes.ok) {
+          const data = await agentRes.json();
+          setAgentFramework(data.agentFramework ?? "openclaw");
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to check OmniSocial connection");
@@ -252,6 +260,13 @@ export default function OpenClawAgent() {
                 </Badge>
                 <Badge variant="outline" className="border-zinc-800 text-zinc-400">
                   Agent Core v4.9
+                </Badge>
+                <Badge variant="outline" className={
+                  agentFramework === "hermes"
+                    ? "border-amber-600 text-amber-400"
+                    : "border-purple-600 text-purple-400"
+                }>
+                  {agentFramework === "hermes" ? "Hermes" : "OpenClaw"} Framework
                 </Badge>
               </div>
               <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">

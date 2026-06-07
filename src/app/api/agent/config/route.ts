@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   const { data: config } = await supabase
     .from("AgentConfig")
-    .select("llmProvider, llmApiKeyEncrypted, twilioAccountSid, twilioAuthTokenEncrypted, twilioWhatsappNumber, isActive")
+    .select("llmProvider, llmApiKeyEncrypted, twilioAccountSid, twilioAuthTokenEncrypted, twilioWhatsappNumber, isActive, agentFramework, hermesEndpointUrl, hermesApiKeyEncrypted")
     .eq("userId", user.id)
     .single();
 
@@ -36,10 +36,18 @@ export async function GET(req: NextRequest) {
     try { maskedToken = maskKey(decrypt(config.twilioAuthTokenEncrypted)); } catch { maskedToken = "****"; }
   }
 
+  let maskedHermesKey = null;
+  if (config.hermesApiKeyEncrypted) {
+    try { maskedHermesKey = maskKey(decrypt(config.hermesApiKeyEncrypted)); } catch { maskedHermesKey = "****"; }
+  }
+
   return NextResponse.json({
     isActive: config.isActive,
     llmProvider: config.llmProvider,
     llmApiKeyMasked: maskedKey,
+    agentFramework: config.agentFramework || "openclaw",
+    hermesEndpointUrl: config.hermesEndpointUrl || "",
+    hermesApiKeyMasked: maskedHermesKey,
     twilioAccountSid: config.twilioAccountSid,
     twilioAuthTokenMasked: maskedToken,
     twilioWhatsappNumber: config.twilioWhatsappNumber,
@@ -59,7 +67,7 @@ export async function PUT(req: NextRequest) {
   if ("error" in parsed) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
-  const { llmProvider, llmApiKey, twilioAccountSid, twilioAuthToken, twilioWhatsappNumber, isActive } = parsed.data;
+  const { llmProvider, llmApiKey, twilioAccountSid, twilioAuthToken, twilioWhatsappNumber, isActive, agentFramework, hermesEndpointUrl, hermesApiKey } = parsed.data;
 
   const { data: existing } = await supabase
     .from("AgentConfig")
@@ -69,6 +77,8 @@ export async function PUT(req: NextRequest) {
 
   const updateData: Record<string, unknown> = {
     llmProvider: llmProvider ?? "openai",
+    agentFramework: agentFramework ?? "openclaw",
+    hermesEndpointUrl: hermesEndpointUrl || null,
     twilioAccountSid: twilioAccountSid || null,
     twilioWhatsappNumber: twilioWhatsappNumber || null,
     isActive: isActive ?? true,
@@ -80,6 +90,9 @@ export async function PUT(req: NextRequest) {
   }
   if (twilioAuthToken && twilioAuthToken !== "****") {
     try { updateData.twilioAuthTokenEncrypted = encrypt(twilioAuthToken); } catch { return NextResponse.json({ error: "Failed to encrypt Twilio auth token" }, { status: 500 }); }
+  }
+  if (hermesApiKey && hermesApiKey !== "****") {
+    try { updateData.hermesApiKeyEncrypted = encrypt(hermesApiKey); } catch { return NextResponse.json({ error: "Failed to encrypt Hermes API key" }, { status: 500 }); }
   }
 
   let result;
@@ -105,6 +118,8 @@ export async function PUT(req: NextRequest) {
   return NextResponse.json({
     isActive: result.isActive,
     llmProvider: result.llmProvider,
+    agentFramework: result.agentFramework,
+    hermesEndpointUrl: result.hermesEndpointUrl,
     twilioAccountSid: result.twilioAccountSid,
     twilioWhatsappNumber: result.twilioWhatsappNumber,
   });

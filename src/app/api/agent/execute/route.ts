@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/encryption";
-import { callLLM, SYSTEM_PROMPT, LLMProvider, AgentMessage } from "@/lib/llm";
+import { callLLM, callHermesAgent, SYSTEM_PROMPT, LLMProvider, HermesConfig, AgentMessage } from "@/lib/llm";
 import { AGENT_TOOLS, AgentToolName } from "../tools";
 import { executeTool } from "../executor";
 import { agentExecuteSchema, validateBody } from "@/lib/validations/schemas";
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
   const { data: agentConfig } = await supabase
     .from("AgentConfig")
-    .select("llmProvider, llmApiKeyEncrypted, isActive")
+    .select("llmProvider, llmApiKeyEncrypted, isActive, agentFramework, hermesEndpointUrl, hermesApiKeyEncrypted")
     .eq("userId", user.id)
     .single();
 
@@ -42,14 +42,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "AI agent not configured" }, { status: 403 });
   }
 
+  const framework = (agentConfig.agentFramework as "openclaw" | "hermes") || "openclaw";
+
   let llmApiKey: string;
   try {
-    llmApiKey = decrypt(agentConfig.llmApiKeyEncrypted);
+    if (framework === "hermes") {
+      llmApiKey = agentConfig.hermesApiKeyEncrypted ? decrypt(agentConfig.hermesApiKeyEncrypted) : "";
+    } else {
+      llmApiKey = decrypt(agentConfig.llmApiKeyEncrypted);
+    }
   } catch {
-    return NextResponse.json({ error: "Failed to decrypt LLM API key. Check encryption configuration." }, { status: 500 });
+    return NextResponse.json({ error: "Failed to decrypt API key. Check encryption configuration." }, { status: 500 });
   }
 
-  const provider = (agentConfig.llmProvider as LLMProvider) || "openai";
+  const messages: AgentMessage[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: message },
+  ];
+
+  const allToolCalls: Record<string, unknown>[] = [];
+  let finalContent = "";
+  let iteration = 0;
+
+  const hermesConfig: HermesConfig | null = framework === "hermes" ? {
+    endpointUrl: agentConfig.hermesEndpointUrl || process.env.HERMES_DEFAULT_ENDPOINT_URL || "",
+    apiKey: llmApiKey || undefined,
+  } : null;
+
+  if (framework === "hermes" && !hermesConfig?.endpointUrl) {
+    return NextResponse.json({ error: "Hermes endpoint URL not configured" }, { status: 400 });
+  }
 
   const { data: omniConfig } = await supabase
     .from("OmniSocialConfig")
@@ -69,20 +91,13 @@ export async function POST(req: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-  const messages: AgentMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: message },
-  ];
-
-  const allToolCalls: Record<string, unknown>[] = [];
-  let finalContent = "";
-  let iteration = 0;
-
   try {
     while (iteration < MAX_ITERATIONS) {
       iteration++;
 
-      const response = await callLLM(provider, llmApiKey, messages, AGENT_TOOLS);
+      const response = framework === "hermes" && hermesConfig
+        ? await callHermesAgent(hermesConfig, messages, AGENT_TOOLS)
+        : await callLLM((agentConfig.llmProvider as LLMProvider) || "openai", llmApiKey, messages, AGENT_TOOLS);
 
       if (response.content) {
         finalContent = response.content;

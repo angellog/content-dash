@@ -99,6 +99,9 @@ export default function SettingsPage() {
 
   const [llmProvider, setLlmProvider] = useState<string>("openai");
   const [llmApiKey, setLlmApiKey] = useState("");
+  const [agentFramework, setAgentFramework] = useState<string>("openclaw");
+  const [hermesEndpointUrl, setHermesEndpointUrl] = useState("");
+  const [hermesApiKey, setHermesApiKey] = useState("");
   const [agentActive, setAgentActive] = useState(false);
   const [twilioSid, setTwilioSid] = useState("");
   const [twilioAuthToken, setTwilioAuthToken] = useState("");
@@ -136,6 +139,9 @@ export default function SettingsPage() {
           const data = await agentRes.json();
           setLlmProvider(data.llmProvider ?? "openai");
           setAgentActive(data.isActive ?? false);
+          setAgentFramework(data.agentFramework ?? "openclaw");
+          setHermesEndpointUrl(data.hermesEndpointUrl ?? "");
+          setHermesApiKey(data.hermesApiKeyMasked ?? "");
           setTwilioSid(data.twilioAccountSid ?? "");
           setTwilioAuthToken(data.twilioAuthTokenMasked ?? "");
           setTwilioNumber(data.twilioWhatsappNumber ?? "");
@@ -224,8 +230,11 @@ export default function SettingsPage() {
     setSavingAgent(true);
     try {
       const body: Record<string, unknown> = {
-        llmProvider,
-        llmApiKey: llmApiKey || undefined,
+        agentFramework,
+        llmProvider: agentFramework === "openclaw" ? llmProvider : undefined,
+        llmApiKey: agentFramework === "openclaw" && llmApiKey ? llmApiKey : undefined,
+        hermesEndpointUrl: agentFramework === "hermes" ? hermesEndpointUrl : undefined,
+        hermesApiKey: agentFramework === "hermes" && hermesApiKey && hermesApiKey !== "****" ? hermesApiKey : undefined,
         twilioAccountSid: twilioSid || undefined,
         twilioWhatsappNumber: twilioNumber || undefined,
         isActive: true,
@@ -243,7 +252,8 @@ export default function SettingsPage() {
         setAgentActive(true);
         setTwilioTokenDirty(false);
       } else {
-        toast.error("Failed to save agent configuration.");
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Failed to save agent configuration.");
       }
     } catch {
       toast.error("Failed to save agent configuration.");
@@ -441,35 +451,92 @@ export default function SettingsPage() {
               <Cpu className="h-5 w-5 text-purple-400" />
               AI Agent Configuration
               {agentActive && <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] uppercase tracking-wider">Active</Badge>}
+              <Badge variant="outline" className={`text-[10px] uppercase tracking-wider ${
+                agentFramework === "hermes"
+                  ? "border-amber-600 text-amber-400"
+                  : "border-purple-600 text-purple-400"
+              }`}>
+                {agentFramework === "hermes" ? "Hermes" : "OpenClaw"}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="space-y-2">
-              <Label className="text-zinc-300 text-sm">LLM Provider</Label>
-              <Select value={llmProvider} onValueChange={(v) => v && setLlmProvider(v)}>
+              <Label className="text-zinc-300 text-sm">Agent Framework</Label>
+              <Select value={agentFramework} onValueChange={(v) => v && setAgentFramework(v)}>
                 <SelectTrigger className="w-full border-zinc-700 bg-zinc-800 text-zinc-200">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="openai">OpenAI (GPT-4o)</SelectItem>
-                  <SelectItem value="anthropic">Anthropic (Claude Sonnet)</SelectItem>
-                  <SelectItem value="gemini">Google (Gemini 2.0 Flash)</SelectItem>
+                  <SelectItem value="openclaw">OpenClaw (Cloud LLM APIs)</SelectItem>
+                  <SelectItem value="hermes">Hermes (Self-Hosted LLM)</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-zinc-500">Choose your preferred AI model. You bring your own API key.</p>
+              <p className="text-xs text-zinc-500">
+                {agentFramework === "openclaw"
+                  ? "Uses OpenAI, Anthropic, or Gemini cloud APIs with your own API key."
+                  : "Connect to a self-hosted Hermes model via vLLM, Ollama, or LM Studio."}
+              </p>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-zinc-300 text-sm">LLM API Key</Label>
-              <Input
-                type="password"
-                placeholder="sk-... / sk-ant-... / AIza..."
-                value={llmApiKey}
-                onChange={(e) => setLlmApiKey(e.target.value)}
-                className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
-              />
-              <p className="text-xs text-zinc-500">Encrypted at rest. Used to power the OpenClaw agent and WhatsApp commands.</p>
-            </div>
+            {agentFramework === "openclaw" ? (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-zinc-300 text-sm">LLM Provider</Label>
+                  <Select value={llmProvider} onValueChange={(v) => v && setLlmProvider(v)}>
+                    <SelectTrigger className="w-full border-zinc-700 bg-zinc-800 text-zinc-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="openai">OpenAI (GPT-4o)</SelectItem>
+                      <SelectItem value="anthropic">Anthropic (Claude Sonnet)</SelectItem>
+                      <SelectItem value="gemini">Google (Gemini 2.0 Flash)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-zinc-500">Choose your preferred AI model. You bring your own API key.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-zinc-300 text-sm">LLM API Key</Label>
+                  <Input
+                    type="password"
+                    placeholder="sk-... / sk-ant-... / AIza..."
+                    value={llmApiKey}
+                    onChange={(e) => setLlmApiKey(e.target.value)}
+                    className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
+                  />
+                  <p className="text-xs text-zinc-500">Encrypted at rest. Used to power the OpenClaw agent and WhatsApp commands.</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-zinc-300 text-sm">Hermes Endpoint URL</Label>
+                  <Input
+                    type="text"
+                    placeholder="http://localhost:11434/v1"
+                    value={hermesEndpointUrl}
+                    onChange={(e) => setHermesEndpointUrl(e.target.value)}
+                    className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
+                  />
+                  <p className="text-xs text-zinc-500">
+                    Your self-hosted Hermes model endpoint (vLLM, Ollama, LM Studio). Must expose OpenAI-compatible /v1/chat/completions.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-zinc-300 text-sm">Hermes API Key <span className="text-zinc-600">(optional)</span></Label>
+                  <Input
+                    type="password"
+                    placeholder="Leave empty if your endpoint has no auth"
+                    value={hermesApiKey}
+                    onChange={(e) => setHermesApiKey(e.target.value)}
+                    className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
+                  />
+                  <p className="text-xs text-zinc-500">Encrypted at rest. Only needed if your Hermes endpoint requires authentication.</p>
+                </div>
+              </>
+            )}
 
             <Separator className="bg-zinc-800" />
 
