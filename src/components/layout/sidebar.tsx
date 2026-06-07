@@ -24,6 +24,7 @@ import {
   MessageCircle,
   CreditCard,
   Sparkles,
+  BookOpen,
   Settings,
   Menu,
   Wifi,
@@ -40,6 +41,7 @@ const navItems = [
   { label: "WhatsApp Billboard", href: "/whatsapp", icon: MessageCircle },
   { label: "NFC Cards", href: "/nfc", icon: CreditCard },
   { label: "OpenClaw", href: "/openclaw", icon: Sparkles, pro: true },
+  { label: "Docs", href: "/docs", icon: BookOpen },
 ];
 
 function SidebarBrand() {

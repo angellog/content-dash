@@ -410,3 +410,459 @@ If upgrading from pre-v2.0.0 where `ENCRYPTION_SALT` was hardcoded:
 2. Re-encrypt all keys through the Settings page (PUT `/api/agent/config` with new keys)
 3. Change `ENCRYPTION_SALT` to a new random value
 4. Re-save all keys through Settings again
+
+---
+
+## Agent Framework Comparison
+
+### Side-by-Side
+
+| Aspect | OpenClaw | Hermes |
+|--------|----------|--------|
+| **Architecture** | Direct cloud LLM API calls | Self-hosted LLM via OpenAI-compatible endpoint |
+| **LLM Providers** | OpenAI (GPT-4o), Anthropic (Claude Sonnet), Google (Gemini 2.0 Flash) | Any model served via vLLM/Ollama/LM Studio (NousResearch Hermes models recommended) |
+| **Data Flow** | User → ContentDash → Cloud API → ContentDash → User | User → ContentDash → Your Server → ContentDash → User |
+| **Cost** | Pay-per-token to LLM provider (OpenAI ~$5/1M tokens, Anthropic ~$3/1M tokens) | Free after hardware cost (self-hosted) or cloud GPU cost (~$0.20-$1.00/hr) |
+| **Privacy** | Your prompts and tool results pass through a third-party API | All data stays on your infrastructure — nothing leaves your network |
+| **Latency** | 1-3 seconds per LLM call (depends on provider and region) | 2-10 seconds per LLM call (depends on model size and GPU) |
+| **Offline Support** | No — requires internet connection to LLM provider | Yes — works entirely on your local network |
+| **Setup Complexity** | Low — just enter an API key | Medium — need to set up and run a model server |
+| **Customization** | Limited to provider's model capabilities | Full control over model, system prompt, temperature, context length |
+| **Minimum Hardware** | None (cloud) | GPU with 8GB+ VRAM for 8B models, 24GB+ for 70B models |
+| **Recommended For** | Teams wanting quick setup, best-in-class reasoning, no infrastructure | Privacy-first teams, air-gapped environments, cost optimization at scale, model experimentation |
+| **Tool Calling** | Native function calling API (OpenAI/Anthropic/Gemini format) | ChatML with `<tools>` XML + `tool_call>` XML tags (Hermes function-calling format) |
+| **Reasoning** | Provider-dependent (chain-of-thought, etc.) | Built-in `<scratch_pad>` GOAP reasoning framework |
+| **Rate Limits** | Subject to LLM provider rate limits + ContentDash 10/min | Only ContentDash 10/min (no external rate limits) |
+
+### Benefits of OpenClaw
+
+1. **Zero infrastructure** — just add an API key and go
+2. **Best reasoning quality** — GPT-4o, Claude Sonnet, and Gemini are state-of-the-art
+3. **Fastest time-to-value** — configure in under 2 minutes
+4. **Multi-provider flexibility** — switch between OpenAI, Anthropic, and Gemini anytime
+5. **No GPU required** — runs entirely in the cloud
+6. **Automatic model updates** — providers continuously improve their models
+
+### Benefits of Hermes
+
+1. **Complete data privacy** — no prompts or results ever leave your server
+2. **Zero per-token cost** — after hardware, inference is free
+3. **Offline capability** — works without internet in air-gapped environments
+4. **Full model control** — choose any model, adjust temperature, context length, sampling
+5. **No vendor lock-in** — not dependent on any single LLM provider's pricing or availability
+6. **GOAP reasoning** — built-in scratch pad for goal-oriented action planning
+7. **Custom fine-tuning** — bring your own fine-tuned model for domain-specific tasks
+8. **Predictable latency** — no shared infrastructure variability
+
+### When to Use Which
+
+| Scenario | Recommended Framework |
+|----------|----------------------|
+| Just getting started, want to try the agent | OpenClaw |
+| Small team, low volume, don't want to manage servers | OpenClaw |
+| Enterprise with data privacy requirements (GDPR, HIPAA) | Hermes |
+| High volume (>10K agent requests/day), cost optimization | Hermes |
+| Air-gapped or offline environment | Hermes |
+| Want to experiment with custom/fine-tuned models | Hermes |
+| Need best-in-class reasoning for complex tasks | OpenClaw |
+| Startup with limited DevOps capacity | OpenClaw |
+| Running in a regulated industry (finance, healthcare) | Hermes |
+| Want predictable, flat monthly costs | Hermes |
+
+---
+
+## OpenClaw Configuration Guide
+
+### Step 1: Choose Your LLM Provider
+
+In **Settings → AI Agent Configuration**, select **"OpenClaw (Cloud LLM APIs)"** as the framework, then choose a provider:
+
+| Provider | Model | Best For | Pricing (approx.) |
+|----------|-------|----------|-------------------|
+| OpenAI | GPT-4o | General-purpose, best reasoning | ~$5/1M input tokens |
+| Anthropic | Claude Sonnet 4 | Nuanced writing, analysis | ~$3/1M input tokens |
+| Google | Gemini 2.0 Flash | Speed, cost efficiency | ~$0.075/1M input tokens |
+
+### Step 2: Get Your API Key
+
+- **OpenAI**: https://platform.openai.com/api-keys → Create new secret key → Copy `sk-...`
+- **Anthropic**: https://console.anthropic.com/settings/keys → Create key → Copy `sk-ant-...`
+- **Google**: https://aistudio.google.com/apikey → Create API key → Copy `AIza...`
+
+### Step 3: Enter in Settings
+
+1. Navigate to **Settings** (gear icon in sidebar)
+2. Under **AI Agent Configuration**, framework should be **OpenClaw**
+3. Select your provider from the dropdown
+4. Paste your API key in the **LLM API Key** field
+5. Click **Save Agent Config**
+
+### Step 4: Test
+
+1. Navigate to **OpenClaw** in the sidebar
+2. Type a command like: `"Post about AI trends on Instagram and Twitter"`
+3. The agent will: fetch AI news → generate post content → publish to both platforms
+4. Check the activity log for confirmation
+
+---
+
+## Hermes Configuration Guide
+
+### Step 1: Choose Your Hosting Method
+
+| Method | Difficulty | GPU Required | Best For |
+|--------|-----------|--------------|----------|
+| **Ollama** | Easy | Optional (CPU works, GPU faster) | Local development, quick setup |
+| **vLLM** | Medium | Yes (8GB+ VRAM) | Production, high throughput |
+| **LM Studio** | Easy | Optional (CPU works, GPU faster) | Desktop users, GUI preference |
+
+### Step 2: Install and Start the Model Server
+
+#### Option A: Ollama (Recommended for getting started)
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull the Hermes 3 model (8B parameters, ~5GB download)
+ollama pull hermes3
+
+# Start the server (runs on http://localhost:11434 by default)
+ollama serve
+```
+
+The OpenAI-compatible endpoint will be available at: `http://localhost:11434/v1`
+
+#### Option B: vLLM (Recommended for production)
+
+```bash
+# Install vLLM
+pip install vllm
+
+# Start the server with Hermes 3 model
+python -m vllm.entrypoints.openai.api_server \
+  --model NousResearch/Hermes-3-Llama-3.1-8B \
+  --host 0.0.0.0 \
+  --port 11434 \
+  --max-model-len 4096
+```
+
+The OpenAI-compatible endpoint will be available at: `http://localhost:11434/v1`
+
+For larger models (better quality, more GPU required):
+- **70B model** (requires 4x A100 or 2x A6000): `--model NousResearch/Hermes-3-Llama-3.1-70B`
+- **Quantized 8B** (runs on consumer GPUs): `--model NousResearch/Hermes-3-Llama-3.1-8B --quantization awq`
+
+#### Option C: LM Studio (GUI)
+
+1. Download LM Studio from https://lmstudio.ai
+2. Open LM Studio, search for "Hermes 3" in the model browser
+3. Download `Hermes 3 - Llama 3.1 8B` (or larger if your GPU supports it)
+4. Go to the **Local Server** tab
+5. Click **Start Server** — it runs on `http://localhost:1234/v1` by default
+6. Ensure "OpenAI-compatible API" is enabled in settings
+
+### Step 3: Configure in ContentDash Settings
+
+1. Navigate to **Settings** (gear icon in sidebar)
+2. Under **AI Agent Configuration**, select **"Hermes (Self-Hosted LLM)"** as the framework
+3. Enter your **Hermes Endpoint URL**:
+   - Ollama: `http://localhost:11434/v1`
+   - vLLM: `http://localhost:11434/v1`
+   - LM Studio: `http://localhost:1234/v1`
+   - Remote server: `https://your-server.com/v1`
+4. If your endpoint requires authentication, enter the API key in the optional **Hermes API Key** field
+5. Click **Save Agent Config**
+
+### Step 4: Test
+
+1. Navigate to **OpenClaw** in the sidebar
+2. Verify the **Hermes** framework badge is showing (amber badge)
+3. Type a command like: `"Fetch the latest AI news"`
+4. The agent will: call your Hermes model → generate tool calls → execute tools → return results
+5. Check the activity log for confirmation
+
+### Troubleshooting Hermes Setup
+
+| Issue | Solution |
+|-------|---------|
+| "Hermes endpoint URL not configured" | Enter the endpoint URL in Settings → AI Agent Configuration |
+| "Hermes endpoint error: 404" | Make sure your server is running and the URL ends with `/v1` |
+| "Hermes endpoint error: connection refused" | Check that Ollama/vLLM/LM Studio is running: `curl http://localhost:11434/v1/models` |
+| "Hermes endpoint error: 401" | Your endpoint requires auth — add the API key in Settings |
+| Tool calls not working | Ensure you're using a Hermes function-calling trained model (Hermes 2 Pro or Hermes 3) |
+| Slow responses (10+ seconds) | Use a GPU for inference, or try a smaller model (8B instead of 70B) |
+| Out of memory errors | Use a quantized model (AWQ/GGUF), reduce `--max-model-len`, or use a smaller model |
+| Remote endpoint not accessible | Check firewall rules, ensure the port is open, verify HTTPS if using SSL |
+
+---
+
+## Tool Reference
+
+Both OpenClaw and Hermes frameworks share the same 6 tools. The agent decides which tools to call based on your natural language command.
+
+### `fetch_news`
+
+Fetch recent news articles from RSS feeds (TechCrunch, Harvard Business Review, Social Media Examiner).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `topic` | string | Yes | Topic or keyword to filter by (e.g., "AI", "social media"). Use empty string for all topics. |
+| `limit` | number | No | Max number of articles to return. Default: 5 |
+
+**Example commands:**
+- `"Fetch the latest AI news"`
+- `"Get 10 articles about social media marketing"`
+- `"What's trending in tech?"`
+
+**Returns:** JSON array of articles with title, description, link, and publication date.
+
+---
+
+### `post_to_omnisocial`
+
+Create and publish a social media post via OmniSocial. Supports all 10 platforms.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `text` | string | Yes | Post content. For Instagram carousels, separate slides with `\u0060---SLIDE---\u0060`. Include hashtags. |
+| `platforms` | string[] | Yes | Array of platform names: `instagram`, `facebook`, `linkedin`, `threads`, `tiktok`, `youtube`, `pinterest`, `bluesky`, `mastodon`, `x` |
+| `media_urls` | string[] | No | Array of image URLs to attach. |
+| `scheduled_at` | string | No | ISO 8601 datetime to schedule the post. Omit for immediate posting. |
+
+**Example commands:**
+- `"Post 'AI is transforming marketing! 🚀 #AI #Marketing' on Instagram and Twitter"`
+- `"Schedule a post about our new product launch for tomorrow at 9am on LinkedIn and Facebook"`
+- `"Create an Instagram carousel about 5 marketing tips"`
+
+**Returns:** Post ID, published platforms, and scheduling confirmation.
+
+---
+
+### `create_whatsapp_campaign`
+
+Create a WhatsApp billboard campaign — a status update with media that promotes your brand or NFC card.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `campaignName` | string | Yes | Name of the campaign. |
+| `caption` | string | Yes | Text content for the WhatsApp status. |
+| `mediaUrl` | string | No | Image URL, or gradient like `from-purple-900 to-emerald-950`. |
+| `scheduledAt` | string | No | When to publish the campaign. |
+
+**Example commands:**
+- `"Create a WhatsApp campaign called 'Summer Sale' with caption '50% off all items!'"`
+- `"Post a WhatsApp billboard about our new NFC cards"`
+
+**Returns:** Campaign creation confirmation with queue status.
+
+---
+
+### `add_competitor`
+
+Add a competitor brand to the watch list for ongoing tracking and analysis.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `brandName` | string | Yes | Competitor brand name. |
+| `handleInstagram` | string | No | Instagram handle (without @). |
+| `handleYoutube` | string | No | YouTube channel name. |
+| `handleTiktok` | string | No | TikTok handle (without @). |
+| `handleX` | string | No | X/Twitter handle (without @). |
+| `handleLinkedin` | string | No | LinkedIn company page slug. |
+
+**Example commands:**
+- `"Add Nike to my competitor watch list with Instagram handle nike"`
+- `"Track competitor Adidas on Instagram, TikTok, and X"`
+
+**Returns:** Confirmation that the competitor was added.
+
+---
+
+### `get_analytics`
+
+Get a summary of social media analytics from OmniSocial.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `platform` | string | No | Specific platform or `"all"`. Default: all platforms. |
+| `days` | number | No | Number of days to look back. Default: 30. |
+
+**Example commands:**
+- `"Show me my Instagram analytics for the last week"`
+- `"Get analytics across all platforms for the past 30 days"`
+- `"How's my Twitter performance this month?"`
+
+**Returns:** JSON with impressions, engagement rates, top posts, and platform breakdowns.
+
+---
+
+### `manage_nfc_card`
+
+Create an NFC card configuration. NFC cards redirect to a URL when a phone taps them.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cardName` | string | Yes | Name for the NFC card. |
+| `redirectType` | string | Yes | One of: `INSTAGRAM`, `LINK_IN_BIO`, `CUSTOM_URL`, `WHATSAPP_CHAT` |
+| `destinationUrl` | string | Yes | URL the card redirects to. |
+| `isActive` | boolean | No | Whether the card is active. Default: true. |
+
+**Example commands:**
+- `"Create an NFC card called 'Business Card' that redirects to my Instagram @mybrand"`
+- `"Make an NFC card for my WhatsApp chat at +1234567890"`
+
+**Returns:** Card name, redirect type, and destination URL confirmation.
+
+---
+
+## WhatsApp Integration Setup
+
+### Prerequisites
+
+- A [Twilio](https://www.twilio.com) account with WhatsApp Business API access
+- A Twilio phone number with WhatsApp enabled
+- Your ContentDash app deployed and publicly accessible (for webhook)
+
+### Step 1: Get Twilio Credentials
+
+1. Go to https://console.twilio.com
+2. Copy your **Account SID** (starts with `AC...`)
+3. Copy your **Auth Token** (found on the same page)
+4. Note your **WhatsApp-enabled phone number**
+
+### Step 2: Configure in ContentDash
+
+1. Go to **Settings → AI Agent Configuration**
+2. Scroll to **Twilio WhatsApp Integration**
+3. Enter your **Account SID**, **Auth Token**, and **WhatsApp Number** (e.g., `+1234567890`)
+4. Click **Save Agent Config**
+
+### Step 3: Set Up Webhook in Twilio
+
+1. In Twilio Console, go to **Messaging → Settings → WhatsApp Sandbox** (or your WhatsApp sender)
+2. Set the **When a message comes in** URL to:
+   ```
+   https://your-app.vercel.app/api/agent/whatsapp
+   ```
+3. Set HTTP method to **POST**
+4. Save
+
+### Step 4: Test
+
+1. Send a WhatsApp message to your Twilio number: `"Post about AI trends on Instagram"`
+2. ContentDash will process the command through your selected agent framework
+3. You'll receive a WhatsApp reply with the result
+4. Check the OpenClaw activity log for the execution details
+
+### How It Works
+
+```
+WhatsApp Message → Twilio → POST /api/agent/whatsapp
+                                    │
+                                    ▼
+                        Validate Twilio HMAC-SHA1 signature
+                                    │
+                                    ▼
+                        Match WhatsApp number to AgentConfig
+                                    │
+                                    ▼
+                        Dispatch to OpenClaw or Hermes
+                                    │
+                                    ▼
+                        Execute tool loop (max 8 iterations)
+                                    │
+                                    ▼
+                        Log to AgentLog → Reply via TwiML
+```
+
+---
+
+## NFC Card Setup
+
+### Redirect Types
+
+| Type | Description | Example Destination URL |
+|------|-------------|------------------------|
+| `INSTAGRAM` | Redirects to an Instagram profile | `https://instagram.com/yourbrand` |
+| `LINK_IN_BIO` | A general link-in-bio page | `https://linktr.ee/yourbrand` |
+| `CUSTOM_URL` | Any custom URL | `https://yourwebsite.com/promo` |
+| `WHATSAPP_CHAT` | Opens a WhatsApp chat with a number | `https://wa.me/1234567890` |
+
+### How NFC Taps Work
+
+1. Someone taps their phone on your NFC card
+2. The phone reads the NFC tag's URL: `https://your-app.vercel.app/t/card-slug`
+3. ContentDash looks up the card by slug
+4. Logs the tap event (timestamp) in `NFCTapEvent`
+5. Redirects the phone to the card's `destinationUrl`
+
+### Analytics
+
+- View tap counts and timestamps on the **NFC Cards** page
+- Each tap is logged with the card ID and timestamp
+- Tap data is indexed for fast queries
+
+---
+
+## FAQ / Troubleshooting
+
+### General
+
+**Q: I'm getting "AI agent not configured" when trying to use the agent**
+A: Go to Settings → AI Agent Configuration, select a framework, provide the required credentials (API key for OpenClaw, endpoint URL for Hermes), and click Save.
+
+**Q: I changed my LLM provider but the agent still uses the old one**
+A: After changing settings, the new configuration is effective immediately. Try refreshing the OpenClaw page.
+
+**Q: The agent says it can't do something I expected**
+A: The agent is limited to its 6 tools. If you ask it to do something outside those capabilities (like sending emails or editing images), it will explain what it can do instead.
+
+### OpenClaw
+
+**Q: "Failed to decrypt LLM API key"**
+A: The `ENCRYPTION_SALT` env var may have changed. If you had keys encrypted with the old salt, set `ENCRYPTION_SALT=contentdash-salt-v1` temporarily, re-save your API key through Settings, then switch to the new salt.
+
+**Q: "OpenAI API error: 429"**
+A: You've hit OpenAI's rate limit. Wait a minute and try again, or upgrade your OpenAI plan.
+
+**Q: "Anthropic API error: 401"**
+A: Your Anthropic API key is invalid or expired. Generate a new one at https://console.anthropic.com.
+
+### Hermes
+
+**Q: "Hermes endpoint URL not configured"**
+A: You selected the Hermes framework but didn't provide an endpoint URL. Go to Settings and enter your model server URL (e.g., `http://localhost:11434/v1`).
+
+**Q: "Hermes endpoint error: connection refused"**
+A: Your model server isn't running. Start it with `ollama serve`, `vllm ...`, or open LM Studio and click Start Server.
+
+**Q: Hermes responds but doesn't call tools**
+A: Make sure you're using a Hermes function-calling model (Hermes 2 Pro or Hermes 3). Regular Llama models don't support the `tool_call>` format.
+
+**Q: "Hermes endpoint error: 404"**
+A: Your endpoint URL might be wrong. For Ollama, use `http://localhost:11434/v1`. For LM Studio, use `http://localhost:1234/v1`. Verify with: `curl http://localhost:11434/v1/models`.
+
+**Q: How do I switch from Hermes back to OpenClaw?**
+A: Go to Settings → AI Agent Configuration → change the framework dropdown to "OpenClaw" → enter your LLM API key → Save.
+
+### WhatsApp
+
+**Q: WhatsApp messages aren't getting responses**
+A: Check that (1) your Twilio webhook URL is set correctly, (2) your agent is configured and active in Settings, (3) your Twilio auth token matches what's saved in ContentDash.
+
+**Q: "Invalid Twilio signature"**
+A: The `TWILIO_AUTH_TOKEN` env var must match the auth token from your Twilio account. Also ensure `NEXT_PUBLIC_APP_URL` matches your actual app URL.
+
+### Encryption
+
+**Q: "Failed to decrypt OmniSocial API key"**
+A: The encryption salt may have changed. See the Encryption Salt Rotation section above.
+
+**Q: Can I see my stored API keys?**
+A: No — keys are encrypted at rest and only displayed as masked (`****1234`) in the API. The full key is never returned to the client.
+
+### Rate Limiting
+
+**Q: "Rate limit exceeded" (429 error)**
+A: You've made more than 10 agent requests in a minute. Wait 60 seconds and try again. The response headers include `X-RateLimit-Reset` with the reset timestamp.
