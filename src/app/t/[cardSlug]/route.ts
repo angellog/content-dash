@@ -3,13 +3,13 @@ import { createServerClient } from "@supabase/ssr";
 
 export const dynamic = "force-dynamic";
 
-function notActivatedHtml(): string {
+function styledHtml(title: string, message: string, iconSvg: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Card Not Activated</title>
+  <title>${title}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #09090b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #a1a1aa; }
@@ -25,16 +25,19 @@ function notActivatedHtml(): string {
   <div class="container">
     <div class="icon">
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+        ${iconSvg}
       </svg>
     </div>
-    <h1>Card Not Activated</h1>
-    <p>This Smart NFC Card hasn't been set up yet. The owner needs to activate it and create their profile.</p>
+    <h1>${title}</h1>
+    <p>${message}</p>
     <p class="brand">Powered by ContentDash</p>
   </div>
 </body>
 </html>`;
 }
+
+const LOCK_ICON = '<path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />';
+const QUESTION_ICON = '<path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M12 18h.01" />';
 
 export async function GET(
   req: NextRequest,
@@ -60,13 +63,17 @@ export async function GET(
     .single();
 
   if (!card) {
-    return NextResponse.redirect(new URL("/", req.url));
+    return new Response(
+      styledHtml("Card Not Found", "This NFC card doesn't exist or the link may be incorrect.", QUESTION_ICON),
+      { headers: { "Content-Type": "text/html" } }
+    );
   }
 
   if (!card.isActivated) {
-    return new Response(notActivatedHtml(), {
-      headers: { "Content-Type": "text/html" },
-    });
+    return new Response(
+      styledHtml("Card Not Activated", "This Smart NFC Card hasn't been set up yet. The owner needs to activate it and create their profile.", LOCK_ICON),
+      { headers: { "Content-Type": "text/html" } }
+    );
   }
 
   const forwarded = req.headers.get("x-forwarded-for");
