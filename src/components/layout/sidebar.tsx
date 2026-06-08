@@ -25,6 +25,7 @@ import {
   CreditCard,
   Sparkles,
   BookOpen,
+  Compass,
   Settings,
   Menu,
   Wifi,
@@ -42,6 +43,7 @@ const navItems = [
   { label: "NFC Cards", href: "/nfc", icon: CreditCard },
   { label: "OpenClaw", href: "/openclaw", icon: Sparkles, pro: true },
   { label: "Docs", href: "/docs", icon: BookOpen },
+  { label: "Guide", href: "/guide", icon: Compass },
 ];
 
 function SidebarBrand() {

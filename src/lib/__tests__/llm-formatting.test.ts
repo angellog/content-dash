@@ -52,7 +52,7 @@ describe("OpenAI message formatting", () => {
     ];
 
     const formatted = await formatForOpenAI(messages);
-    const assistantMsg = formatted.find((m: any) => m.role === "assistant" && m.tool_calls);
+    const assistantMsg = formatted.find((m: Record<string, unknown>) => m.role === "assistant" && "tool_calls" in m) as Record<string, unknown> & { tool_calls: { function: { name: string } }[] };
     expect(assistantMsg).toBeDefined();
     expect(assistantMsg.tool_calls).toHaveLength(1);
     expect(assistantMsg.tool_calls[0].function.name).toBe("test_tool");
@@ -66,7 +66,7 @@ describe("OpenAI message formatting", () => {
     ];
 
     const formatted = await formatForOpenAI(messages);
-    const toolMsg = formatted.find((m: any) => m.role === "tool");
+    const toolMsg = formatted.find((m: Record<string, unknown>) => m.role === "tool") as Record<string, unknown> & { tool_call_id: string };
     expect(toolMsg).toBeDefined();
     expect(toolMsg.tool_call_id).toBe("call_abc");
   });
@@ -115,9 +115,9 @@ describe("Anthropic message formatting", () => {
     ];
 
     const formatted = await formatForAnthropic(messages);
-    const assistantMsg = formatted.find((m: any) => m.role === "assistant" && Array.isArray(m.content));
+    const assistantMsg = formatted.find((m: Record<string, unknown>) => m.role === "assistant" && Array.isArray(m.content)) as Record<string, unknown> & { content: Record<string, unknown>[] };
     expect(assistantMsg).toBeDefined();
-    const toolUseBlock = assistantMsg.content.find((b: any) => b.type === "tool_use");
+    const toolUseBlock = assistantMsg.content.find((b: Record<string, unknown>) => b.type === "tool_use") as Record<string, unknown> & { name: string; id: string };
     expect(toolUseBlock).toBeDefined();
     expect(toolUseBlock.name).toBe("test_tool");
     expect(toolUseBlock.id).toBe("tu_1");
@@ -131,9 +131,9 @@ describe("Anthropic message formatting", () => {
     ];
 
     const formatted = await formatForAnthropic(messages);
-    const toolResultMsg = formatted.find((m: any) => m.role === "user" && Array.isArray(m.content));
+    const toolResultMsg = formatted.find((m: Record<string, unknown>) => m.role === "user" && Array.isArray(m.content)) as Record<string, unknown> & { content: Record<string, unknown>[] };
     expect(toolResultMsg).toBeDefined();
-    const block = toolResultMsg.content.find((b: any) => b.type === "tool_result");
+    const block = toolResultMsg.content.find((b: Record<string, unknown>) => b.type === "tool_result") as Record<string, unknown> & { tool_use_id: string };
     expect(block).toBeDefined();
     expect(block.tool_use_id).toBe("tu_1");
   });
@@ -181,9 +181,9 @@ describe("Gemini message formatting", () => {
     ];
 
     const contents = await formatForGemini(messages);
-    const modelMsg = contents.find((c: any) => c.role === "model" && c.parts.some((p: any) => p.functionCall));
+    const modelMsg = contents.find((c: Record<string, unknown>) => c.role === "model" && Array.isArray(c.parts) && (c.parts as Record<string, unknown>[]).some((p) => "functionCall" in p)) as Record<string, unknown> & { parts: Record<string, unknown>[] };
     expect(modelMsg).toBeDefined();
-    const fcPart = modelMsg.parts.find((p: any) => p.functionCall);
+    const fcPart = modelMsg.parts.find((p: Record<string, unknown>) => "functionCall" in p) as Record<string, unknown> & { functionCall: { name: string } };
     expect(fcPart.functionCall.name).toBe("test_tool");
   });
 
@@ -195,9 +195,9 @@ describe("Gemini message formatting", () => {
     ];
 
     const contents = await formatForGemini(messages);
-    const toolMsg = contents.find((c: any) => c.role === "user" && c.parts.some((p: any) => p.functionResponse));
+    const toolMsg = contents.find((c: Record<string, unknown>) => c.role === "user" && Array.isArray(c.parts) && (c.parts as Record<string, unknown>[]).some((p) => "functionResponse" in p)) as Record<string, unknown> & { parts: Record<string, unknown>[] };
     expect(toolMsg).toBeDefined();
-    const frPart = toolMsg.parts.find((p: any) => p.functionResponse);
+    const frPart = toolMsg.parts.find((p: Record<string, unknown>) => "functionResponse" in p) as Record<string, unknown> & { functionResponse: { name: string; response: { content: string } } };
     expect(frPart.functionResponse.name).toBe("test_tool");
     expect(frPart.functionResponse.response.content).toBe("output data");
   });

@@ -90,7 +90,7 @@ describe("Hermes ChatML message formatting", () => {
       { role: "system", content: "You are helpful" },
       { role: "user", content: "test" },
     ]);
-    const systemMsg = messages.find((m: any) => m.role === "system");
+    const systemMsg = messages.find((m: Record<string, unknown>) => m.role === "system") as Record<string, unknown> & { content: string };
     expect(systemMsg).toBeDefined();
     expect(systemMsg.content).toContain("<tools>");
     expect(systemMsg.content).toContain("</tools>");
@@ -108,8 +108,8 @@ describe("Hermes ChatML message formatting", () => {
       },
     ]);
     const assistantMsg = messages.find(
-      (m: any) => m.role === "assistant" && m.content.includes("tool_call")
-    );
+      (m: Record<string, unknown>) => m.role === "assistant" && typeof m.content === "string" && (m.content as string).includes("tool_call")
+    ) as Record<string, unknown> & { content: string };
     expect(assistantMsg).toBeDefined();
     expect(assistantMsg.content).toContain("fetch_news");
     expect(assistantMsg.content).toContain('"topic"');
@@ -126,7 +126,7 @@ describe("Hermes ChatML message formatting", () => {
         toolCallName: "fetch_news",
       },
     ]);
-    const toolMsg = messages.find((m: any) => m.role === "tool");
+    const toolMsg = messages.find((m: Record<string, unknown>) => m.role === "tool") as Record<string, unknown> & { content: string };
     expect(toolMsg).toBeDefined();
     expect(toolMsg.content).toContain("tool_response");
     expect(toolMsg.content).toContain("fetch_news");
