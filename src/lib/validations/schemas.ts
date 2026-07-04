@@ -90,6 +90,10 @@ export const omnisocialConfigPutSchema = z.object({
   message: "API key or MCP URL is required",
 });
 
+export const omnisocialValidateSchema = z.object({
+  apiKey: z.string().min(1),
+});
+
 export function validateBody<T extends z.ZodType>(schema: T, body: unknown): { data: z.infer<T> } | { error: string } {
   const result = schema.safeParse(body);
   if (result.success) return { data: result.data };

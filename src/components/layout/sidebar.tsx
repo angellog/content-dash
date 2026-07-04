@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useSocialMediaStore } from "@/hooks/useSocialMediaStore";
+import { useAgentConfigStore } from "@/hooks/useAgentConfigStore";
 import {
   Home,
   Share2,
@@ -116,6 +117,12 @@ function ConnectionStatus() {
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const agentFramework = useAgentConfigStore((s) => s.agentFramework);
+  const fetchAgentFramework = useAgentConfigStore((s) => s.fetchAgentFramework);
+
+  useEffect(() => {
+    fetchAgentFramework();
+  }, [fetchAgentFramework]);
 
   return (
     <div className="flex flex-1 flex-col justify-between">
@@ -125,10 +132,14 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             item.href === "/"
               ? pathname === "/"
               : pathname.startsWith(item.href);
+          const label =
+            item.href === "/openclaw" && agentFramework === "hermes"
+              ? "Hermes"
+              : item.label;
           return (
             <NavLink
               key={item.href}
-              item={item}
+              item={{ ...item, label }}
               active={active}
               onClick={onNavigate}
             />

@@ -39,6 +39,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useAgentConfigStore } from "@/hooks/useAgentConfigStore";
 
 type InputMode = "api_key" | "mcp_url";
 
@@ -140,6 +141,7 @@ export default function SettingsPage() {
           setLlmProvider(data.llmProvider ?? "openai");
           setAgentActive(data.isActive ?? false);
           setAgentFramework(data.agentFramework ?? "openclaw");
+          useAgentConfigStore.getState().setAgentFramework(data.agentFramework ?? "openclaw");
           setHermesEndpointUrl(data.hermesEndpointUrl ?? "");
           setHermesApiKey(data.hermesApiKeyMasked ?? "");
           setTwilioSid(data.twilioAccountSid ?? "");
@@ -157,10 +159,13 @@ export default function SettingsPage() {
     if (!apiKey) return;
     setValidationStatus("checking");
     try {
-      const res = await fetch("https://api.omnisocials.com/v1/accounts", {
-        headers: { Authorization: `Bearer ${apiKey}` },
+      const res = await fetch("/api/omnisocial/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
       });
-      setValidationStatus(res.ok ? "valid" : "invalid");
+      const data = await res.json();
+      setValidationStatus(res.ok && data.valid ? "valid" : "invalid");
     } catch {
       setValidationStatus("invalid");
     }
@@ -172,20 +177,21 @@ export default function SettingsPage() {
     setConnecting(true);
     setValidationStatus("checking");
     try {
-      const validateRes = await fetch(
-        "https://api.omnisocials.com/v1/accounts",
-        { headers: { Authorization: `Bearer ${apiKey}` } }
-      );
+      const validateRes = await fetch("/api/omnisocial/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
+      });
+      const validateData = await validateRes.json();
 
-      if (!validateRes.ok) {
+      if (!validateRes.ok || !validateData.valid) {
         setValidationStatus("invalid");
         setConnecting(false);
         return;
       }
 
       setValidationStatus("valid");
-      const accData = await validateRes.json();
-      const fetchedAccounts = accData.data ?? accData.accounts ?? accData ?? [];
+      const fetchedAccounts = validateData.accounts ?? [];
 
       const res = await fetch("/api/omnisocial/config", {
         method: "PUT",
@@ -251,6 +257,7 @@ export default function SettingsPage() {
         toast.success("AI Agent configuration saved!");
         setAgentActive(true);
         setTwilioTokenDirty(false);
+        useAgentConfigStore.getState().setAgentFramework(agentFramework);
       } else {
         const err = await res.json().catch(() => ({}));
         toast.error(err.error || "Failed to save agent configuration.");

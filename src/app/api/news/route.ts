@@ -40,7 +40,7 @@ function parseXmlItems(xml: string, source: string, category: string): ParsedIte
     const readTime = `${Math.max(2, Math.round(wordCount / 200))} min read`;
 
     items.push({
-      id: `rss-${Buffer.from(link).toString("base64").slice(0, 12)}`,
+      id: `rss-${Buffer.from(link).toString("base64url")}`,
       title,
       source,
       date: pubDate ? new Date(pubDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
