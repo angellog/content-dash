@@ -12,5 +12,5 @@ export async function GET(req: NextRequest) {
   if (end_date) params.set("end_date", end_date);
 
   const query = params.toString();
-  return proxyOmniSocial(req, `/analytics${query ? `?${query}` : ""}`);
+  return proxyOmniSocial(req, `/analytics/overview${query ? `?${query}` : ""}`);
 }

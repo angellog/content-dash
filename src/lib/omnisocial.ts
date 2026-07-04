@@ -36,18 +36,30 @@ export interface CreatePostPayload {
   scheduled_at?: string;
 }
 
-export interface AnalyticsData {
-  followers: Record<Platform, { count: number; change: number }>;
-  impressions: { date: string; value: number }[];
-  engagement_rate: { date: string; value: number }[];
-  top_posts: {
-    id: string;
-    platform: Platform;
-    impressions: number;
-    likes: number;
-    comments: number;
-    engagement_rate: number;
-  }[];
+// Real shape of GET /v1/analytics/overview — an aggregate summary, not a
+// time series. Per-post metrics require a separate call to
+// GET /v1/analytics/posts?ids=<post ids from GET /v1/posts>.
+export interface AnalyticsOverview {
+  total_posts: number;
+  total_platforms: number;
+  total_engagement: number;
+  total_impressions: number;
+  average_engagement_rate: number;
+  top_performing_platform: string | null;
+  platform_breakdown: Record<
+    string,
+    { posts?: number; impressions?: number; engagement?: number; engagement_rate?: number }
+  >;
+}
+
+export interface PostAnalytics {
+  id: string;
+  impressions?: number;
+  views?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  engagement_rate?: number;
 }
 
 export interface WebhookEvent {
@@ -168,15 +180,19 @@ class OmniSocialClient {
     platform?: Platform;
     start_date?: string;
     end_date?: string;
-  }): Promise<AnalyticsData> {
+  }): Promise<AnalyticsOverview> {
     const searchParams = new URLSearchParams();
     if (params?.platform) searchParams.set("platform", params.platform);
     if (params?.start_date) searchParams.set("start_date", params.start_date);
     if (params?.end_date) searchParams.set("end_date", params.end_date);
     const query = searchParams.toString();
-    return this.request<AnalyticsData>(
-      `/analytics${query ? `?${query}` : ""}`
+    return this.request<AnalyticsOverview>(
+      `/analytics/overview${query ? `?${query}` : ""}`
     );
+  }
+
+  async getPostAnalytics(ids: string[]): Promise<PostAnalytics[]> {
+    return this.request(`/analytics/posts?ids=${ids.join(",")}`);
   }
 
   // Configuration

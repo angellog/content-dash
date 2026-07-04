@@ -160,7 +160,7 @@ async function executeGetAnalytics(
   const startDate = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
   const endDate = new Date().toISOString().split("T")[0];
 
-  let url = `https://api.omnisocials.com/v1/analytics?start_date=${startDate}&end_date=${endDate}`;
+  let url = `https://api.omnisocials.com/v1/analytics/overview?start_date=${startDate}&end_date=${endDate}`;
   if (platform && platform !== "all") {
     url += `&platform=${platform}`;
   }
