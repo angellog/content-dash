@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { Platform, Post, PostStatus } from "@/types/social";
-import { initialSocialPosts } from "@/lib/data/social";
 import { CONNECTED_PLATFORMS } from "@/lib/omnisocial";
 import {
   fetchPostsFromApi,
@@ -30,7 +29,7 @@ interface SocialMediaStore {
 }
 
 export const useSocialMediaStore = create<SocialMediaStore>((set, get) => ({
-  posts: process.env.NODE_ENV === "development" ? initialSocialPosts : ({} as Record<Platform, Post[]>),
+  posts: {} as Record<Platform, Post[]>,
   activePlatform: CONNECTED_PLATFORMS[0] || "instagram",
   viewMode: "status" as ViewMode,
   syncState: { isLive: false, lastSyncedAt: null, error: null },

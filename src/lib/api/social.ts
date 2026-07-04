@@ -1,5 +1,4 @@
 import { Platform, Post, PostStatus } from "@/types/social";
-import { initialSocialPosts } from "@/lib/data/social";
 
 const API_BASE = "/api/omnisocial";
 
@@ -40,6 +39,12 @@ function mapApiPostToPost(raw: Record<string, unknown>): Post {
   };
 }
 
+const emptyPosts: Record<Platform, Post[]> = {
+  instagram: [], facebook: [], linkedin: [], threads: [],
+  tiktok: [], youtube: [], pinterest: [], bluesky: [],
+  mastodon: [], x: [],
+};
+
 export async function fetchPostsFromApi(
   platform?: Platform | "all"
 ): Promise<{ posts: Record<Platform, Post[]>; isLive: boolean }> {
@@ -52,20 +57,12 @@ export async function fetchPostsFromApi(
       credentials: "include",
     });
 
-    if (res.status === 401 || res.status === 403) {
-      return { posts: initialSocialPosts, isLive: false };
-    }
-
     if (!res.ok) {
-      return { posts: initialSocialPosts, isLive: false };
+      return { posts: emptyPosts, isLive: false };
     }
 
     const data = await res.json();
     const rawPosts = Array.isArray(data) ? data : data.posts ?? data.data ?? [];
-
-    if (rawPosts.length === 0) {
-      return { posts: initialSocialPosts, isLive: false };
-    }
 
     const mapped: Record<Platform, Post[]> = {
       instagram: [], facebook: [], linkedin: [], threads: [],
@@ -82,7 +79,7 @@ export async function fetchPostsFromApi(
 
     return { posts: mapped, isLive: true };
   } catch {
-    return { posts: initialSocialPosts, isLive: false };
+    return { posts: emptyPosts, isLive: false };
   }
 }
 
