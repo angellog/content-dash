@@ -25,13 +25,16 @@ export async function POST(req: NextRequest) {
     });
 
     if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      console.error(`[omnisocial/validate] upstream ${res.status}: ${errBody.slice(0, 500)}`);
       return NextResponse.json({ valid: false });
     }
 
     const data = await res.json();
     const accounts = data.data ?? data.accounts ?? data ?? [];
     return NextResponse.json({ valid: true, accounts });
-  } catch {
+  } catch (err) {
+    console.error(`[omnisocial/validate] fetch failed: ${err instanceof Error ? err.message : String(err)}`);
     return NextResponse.json({ valid: false });
   }
 }
