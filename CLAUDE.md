@@ -27,6 +27,7 @@ AI-Powered Content Management Dashboard v2.0.0 built with Next.js 16 (App Router
 9. **OpenClaw AI Agent:** Autonomous subagent command center with live activity logs, toggleable autonomous modules (inbox autopilot, competitor scraper, smart posting), competitor watchlist, and terminal command interface — powered by multi-provider LLM (OpenAI/Anthropic/Gemini) with tool calling.
 10. **Security Hardening:** HMAC-SHA1 Twilio webhook validation, timing-safe Flutterwave webhook, AES-256-GCM encryption with configurable salt, input validation via Zod on all API routes, rate limiting on sensitive endpoints.
 11. **Auth Infrastructure:** Supabase Auth with OAuth callback route, session management via middleware proxy, password strength indicator on signup.
+12. **Content Library Bridge:** Read-only view of the separately deployed `feetbit-content-library` repo (its own Next.js app + Supabase project) — surfaced via a server-to-server proxy (`src/lib/api/library-proxy.ts`) calling that repo's `/api/bridge/*` routes with a shared secret. Two independent deployments, not a merged codebase (`FEETBIT_LIBRARY_URL` / `FEETBIT_LIBRARY_BRIDGE_SECRET` env vars).
 
 ## Folder Structure
 ```
@@ -43,6 +44,7 @@ content-dash/
     │   │   ├── auth/        # Auth callback
     │   │   ├── competitors/ # Competitor CRUD (+ [id] for DELETE/PATCH)
     │   │   ├── nfc/cards/   # NFC card CRUD (+ [id] for DELETE)
+    │   │   ├── library/     # Feetbit Content Library bridge proxy (posts, queue, stats, search)
     │   │   ├── news/        # RSS news feed
     │   │   ├── omnisocial/  # OmniSocial proxy (config, analytics, accounts, posts, upload)
     │   │   ├── payments/    # Flutterwave payments + webhook
@@ -50,6 +52,7 @@ content-dash/
     │   ├── analytics/       # Recharts marketing analytics page
     │   ├── calendar/        # date-fns dynamic content calendar
     │   ├── competitors/     # Competitor intelligence table and analytics
+    │   ├── library/         # Read-only view of feetbit-content-library content (bridged, separate deploy)
     │   ├── login/           # Auth page with password strength
     │   ├── news/            # Niche consolidator and AI social copy generator
     │   ├── nfc/             # Hardware redirect configurator & shop cart
@@ -65,7 +68,7 @@ content-dash/
     │   └── useSocialMediaStore.ts  # Zustand store with API persistence
     ├── lib/
     │   ├── __tests__/       # Vitest test suite (encryption, schemas, rate-limit, LLM)
-    │   ├── api/             # API helpers (omnisocial-proxy, social)
+    │   ├── api/             # API helpers (omnisocial-proxy, library-proxy, social)
     │   ├── validations/     # Zod schemas for all API routes
     │   ├── data/            # Demo data (dev only)
     │   ├── encryption.ts    # AES-256-GCM with configurable salt

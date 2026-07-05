@@ -31,6 +31,7 @@ import {
   Menu,
   Wifi,
   WifiOff,
+  Library,
 } from "lucide-react";
 
 const navItems = [
@@ -38,6 +39,7 @@ const navItems = [
   { label: "Social Manager", href: "/social-manager", icon: Share2 },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },
   { label: "Content Calendar", href: "/calendar", icon: CalendarDays },
+  { label: "Content Library", href: "/library", icon: Library },
   { label: "Competitors", href: "/competitors", icon: Swords },
   { label: "News", href: "/news", icon: Newspaper },
   { label: "WhatsApp Billboard", href: "/whatsapp", icon: MessageCircle },
