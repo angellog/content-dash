@@ -99,6 +99,18 @@ export const librarySearchSchema = z.object({
   limit: z.int().positive().max(50).optional().default(12),
 });
 
+export const libraryPostPatchSchema = z.object({
+  id: z.int().positive(),
+  status: z.enum(["pending", "approved", "rejected", "queued"]),
+});
+
+export const libraryQueuePostSchema = z.object({
+  post_id: z.int().positive(),
+  target_id: z.int().positive(),
+  rewritten_caption: z.string().optional().nullable(),
+  scheduled_at: z.string().optional().nullable(),
+});
+
 export function validateBody<T extends z.ZodType>(schema: T, body: unknown): { data: z.infer<T> } | { error: string } {
   const result = schema.safeParse(body);
   if (result.success) return { data: result.data };

@@ -22,6 +22,11 @@ export interface LibraryPost {
   post_media: LibraryPostMedia[];
 }
 
+export interface LibraryTarget {
+  id: number;
+  ig_username: string;
+}
+
 export interface LibraryStats {
   posts: number;
   media: number;
