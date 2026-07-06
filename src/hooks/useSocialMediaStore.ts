@@ -79,6 +79,13 @@ export const useSocialMediaStore = create<SocialMediaStore>((set, get) => ({
     })),
 
   deletePost: async (platform, id) => {
+    // Library-sourced posts are managed in feetbit-library, not OmniSocial —
+    // never send their ids to the OmniSocial DELETE endpoint or drop them
+    // locally, or the board would lie about what the library will publish.
+    const isLibraryPost = get()
+      .posts[platform]?.find((p) => p.id === id)?.source === "library";
+    if (isLibraryPost) return;
+
     try {
       await deletePostViaApi(id);
     } catch {}
@@ -118,7 +125,7 @@ export const useSocialMediaStore = create<SocialMediaStore>((set, get) => ({
     const { posts, isLive } = await fetchPostsFromApi();
     set({
       posts,
-      syncState: { isLive, lastSyncedAt: isLive ? new Date() : null, error: isLive ? null : "Using demo data — connect OmniSocial in Settings" },
+      syncState: { isLive, lastSyncedAt: isLive ? new Date() : null, error: isLive ? null : "Couldn't reach OmniSocial — connect it in Settings" },
       isLoading: false,
     });
   },

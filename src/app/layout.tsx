@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Toaster } from "@/components/ui/sonner";
+import { PageAgentWidget } from "@/components/agent/PageAgentWidget";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -34,6 +35,7 @@ export default function RootLayout({
           </div>
         </div>
         <Toaster richColors position="bottom-right" />
+        <PageAgentWidget />
       </body>
     </html>
   );

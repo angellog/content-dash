@@ -45,42 +45,98 @@ const emptyPosts: Record<Platform, Post[]> = {
   mastodon: [], x: [],
 };
 
+interface LibraryQueueItem {
+  id: number;
+  rewritten_caption: string | null;
+  scheduled_at: string | null;
+  published_at: string | null;
+  publish_status: "draft" | "scheduled" | "publishing" | "published" | "failed";
+  posts: { id: number; caption: string; is_carousel: boolean; media_count: number } | null;
+  target: { ig_username: string } | null;
+}
+
+// Library queue items only ever target Instagram (feetbit-library publishes
+// via the Meta/Composio paths), so they all land on the instagram lane.
+function mapLibraryQueueItemToPost(item: LibraryQueueItem): Post {
+  const statusMap: Record<LibraryQueueItem["publish_status"], PostStatus> = {
+    draft: "draft",
+    scheduled: "scheduled",
+    publishing: "scheduled",
+    published: "published",
+    failed: "backlog",
+  };
+  const when = item.publish_status === "published" ? item.published_at : item.scheduled_at;
+  return {
+    id: `lib-${item.id}`,
+    caption: item.rewritten_caption || item.posts?.caption || "",
+    type: item.posts?.is_carousel ? "Carousel" : "Post",
+    status: statusMap[item.publish_status],
+    platform: "instagram",
+    scheduledDate: when?.split("T")[0],
+    scheduledTime: when?.split("T")[1]?.slice(0, 5),
+    source: "library",
+    libraryQueueId: item.id,
+    targetUsername: item.target?.ig_username,
+  };
+}
+
+async function fetchLibraryQueuePosts(): Promise<Post[]> {
+  try {
+    const res = await fetch("/api/library/queue?limit=100", { credentials: "include" });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return ((data.queue ?? []) as LibraryQueueItem[]).map(mapLibraryQueueItemToPost);
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchPostsFromApi(
   platform?: Platform | "all"
 ): Promise<{ posts: Record<Platform, Post[]>; isLive: boolean }> {
-  try {
-    const params = new URLSearchParams();
-    if (platform && platform !== "all") params.set("platform", platform);
-    if (platform === "all") params.set("limit", "100");
+  // Library queue is fetched alongside OmniSocial so Social Manager, Calendar,
+  // and the Dashboard all see the same combined truth from one place. Either
+  // source failing must not blank out the other.
+  const includeLibrary = !platform || platform === "all" || platform === "instagram";
 
-    const res = await fetch(`${API_BASE}/posts?${params.toString()}`, {
-      credentials: "include",
-    });
+  const [omni, libraryPosts] = await Promise.all([
+    (async () => {
+      try {
+        const params = new URLSearchParams();
+        if (platform && platform !== "all") params.set("platform", platform);
+        if (platform === "all") params.set("limit", "100");
 
-    if (!res.ok) {
-      return { posts: emptyPosts, isLive: false };
-    }
+        const res = await fetch(`${API_BASE}/posts?${params.toString()}`, {
+          credentials: "include",
+        });
+        if (!res.ok) return { rawPosts: [] as Record<string, unknown>[], isLive: false };
 
-    const data = await res.json();
-    const rawPosts = Array.isArray(data) ? data : data.posts ?? data.data ?? [];
-
-    const mapped: Record<Platform, Post[]> = {
-      instagram: [], facebook: [], linkedin: [], threads: [],
-      tiktok: [], youtube: [], pinterest: [], bluesky: [],
-      mastodon: [], x: [],
-    };
-
-    for (const raw of rawPosts) {
-      const post = mapApiPostToPost(raw);
-      if (mapped[post.platform]) {
-        mapped[post.platform].push(post);
+        const data = await res.json();
+        const rawPosts = Array.isArray(data) ? data : data.posts ?? data.data ?? [];
+        return { rawPosts, isLive: true };
+      } catch {
+        return { rawPosts: [] as Record<string, unknown>[], isLive: false };
       }
-    }
+    })(),
+    includeLibrary ? fetchLibraryQueuePosts() : Promise.resolve([]),
+  ]);
 
-    return { posts: mapped, isLive: true };
-  } catch {
-    return { posts: emptyPosts, isLive: false };
+  const mapped: Record<Platform, Post[]> = {
+    instagram: [], facebook: [], linkedin: [], threads: [],
+    tiktok: [], youtube: [], pinterest: [], bluesky: [],
+    mastodon: [], x: [],
+  };
+
+  for (const raw of omni.rawPosts) {
+    const post = mapApiPostToPost(raw);
+    if (mapped[post.platform]) {
+      mapped[post.platform].push(post);
+    }
   }
+
+  mapped.instagram.push(...libraryPosts);
+
+  return { posts: mapped, isLive: omni.isLive || libraryPosts.length > 0 };
 }
 
 export async function createPostViaApi(payload: {

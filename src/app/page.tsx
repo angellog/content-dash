@@ -64,6 +64,11 @@ export default function Home() {
   const [recentActivity, setRecentActivity] = useState<
     { id: string; action: string; detail: string; time: string }[]
   >([]);
+  const [libraryStats, setLibraryStats] = useState<{
+    pending: number;
+    queued: number;
+    published: number;
+  } | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const { fetchPosts, posts, syncState } = useSocialMediaStore();
 
@@ -89,6 +94,20 @@ export default function Home() {
 
       try {
         await fetchPosts();
+      } catch {}
+
+      try {
+        const libRes = await fetch("/api/library/stats");
+        if (libRes.ok) {
+          const lib = await libRes.json();
+          if (typeof lib.pending === "number") {
+            setLibraryStats({
+              pending: lib.pending,
+              queued: lib.queued ?? 0,
+              published: lib.published ?? 0,
+            });
+          }
+        }
       } catch {}
 
       const allPosts = Object.values(useSocialMediaStore.getState().posts).flat();
@@ -282,6 +301,39 @@ export default function Home() {
             );
           })}
         </section>
+
+        {libraryStats && (
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 lg:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-medium text-zinc-300">Content Library</h2>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Live from the feetbit-content-library scheduler — same numbers as the Library page.
+                </p>
+              </div>
+              <div className="flex items-center gap-5">
+                <div className="text-center">
+                  <p className="text-xl font-semibold text-yellow-400">{libraryStats.pending}</p>
+                  <p className="text-[11px] text-zinc-500">Pending review</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xl font-semibold text-blue-400">{libraryStats.queued}</p>
+                  <p className="text-[11px] text-zinc-500">Queued</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xl font-semibold text-emerald-400">{libraryStats.published}</p>
+                  <p className="text-[11px] text-zinc-500">Published</p>
+                </div>
+                <Link
+                  href="/library"
+                  className="ml-2 rounded-md bg-indigo-600/20 px-3 py-1.5 text-xs font-medium text-indigo-400 hover:bg-indigo-600/30 transition-colors"
+                >
+                  Open Library
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section>
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Quick Actions</h2>

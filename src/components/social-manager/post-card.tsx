@@ -14,6 +14,7 @@ import {
   Link2,
   RefreshCw,
   AlertCircle,
+  Library as LibraryIcon,
 } from "lucide-react";
 
 function formatDate(dateStr?: string): string {
@@ -65,7 +66,14 @@ export function PostCard({ post, onDelete }: PostCardProps) {
         <div className="flex items-center gap-1.5 flex-wrap">
           <PostTypeBadge platform={post.platform} type={post.type} />
 
-          {post.omnisocialStatus === "synced" && (
+          {post.source === "library" && (
+            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 font-medium">
+              <LibraryIcon className="w-3 h-3" />
+              Library{post.targetUsername ? ` → @${post.targetUsername}` : ""}
+            </span>
+          )}
+
+          {post.source !== "library" && post.omnisocialStatus === "synced" && (
             <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium">
               <RefreshCw className="w-3 h-3" />
               Synced
@@ -84,15 +92,17 @@ export function PostCard({ post, onDelete }: PostCardProps) {
             </span>
           )}
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete?.(post.id);
-            }}
-            className="ml-auto p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          >
-            <Plus className="w-3.5 h-3.5 rotate-45" />
-          </button>
+          {post.source !== "library" && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete?.(post.id);
+              }}
+              className="ml-auto p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            >
+              <Plus className="w-3.5 h-3.5 rotate-45" />
+            </button>
+          )}
         </div>
 
         <div className="h-[112px] bg-accent/50 rounded-lg flex items-center justify-center relative hover:bg-accent/70 transition-colors">

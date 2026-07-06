@@ -14,6 +14,8 @@ export type PostStatus = "scheduled" | "draft" | "published" | "backlog";
 
 export type OmniSocialSyncStatus = "synced" | "pending" | "error";
 
+export type PostSource = "omnisocial" | "library";
+
 export interface Post {
   id: string;
   caption: string;
@@ -30,6 +32,9 @@ export interface Post {
   videoDuration?: string;
   isThread?: boolean;
   omnisocialStatus?: OmniSocialSyncStatus;
+  source?: PostSource;
+  libraryQueueId?: number;
+  targetUsername?: string;
 }
 
 export const PLATFORMS: Platform[] = [
