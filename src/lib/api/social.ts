@@ -20,6 +20,7 @@ function mapApiPostToPost(raw: Record<string, unknown>): Post {
     failed: "backlog",
     draft: "draft",
   };
+  const media = raw.media as string[] | undefined;
   return {
     id: raw.id as string,
     caption: (raw.text as string) ?? "",
@@ -36,6 +37,7 @@ function mapApiPostToPost(raw: Record<string, unknown>): Post {
     videoDuration: (raw.video_duration as string) ?? undefined,
     isThread: (raw.is_thread as boolean) ?? undefined,
     omnisocialStatus: "synced",
+    mediaUrl: media && media.length > 0 ? media[0] : undefined,
   };
 }
 
@@ -51,7 +53,13 @@ interface LibraryQueueItem {
   scheduled_at: string | null;
   published_at: string | null;
   publish_status: "draft" | "scheduled" | "publishing" | "published" | "failed";
-  posts: { id: number; caption: string; is_carousel: boolean; media_count: number } | null;
+  posts: {
+    id: number;
+    caption: string;
+    is_carousel: boolean;
+    media_count: number;
+    post_media?: { position: number; public_url: string | null; is_video: boolean }[];
+  } | null;
   target: { ig_username: string } | null;
 }
 
@@ -66,6 +74,9 @@ function mapLibraryQueueItemToPost(item: LibraryQueueItem): Post {
     failed: "backlog",
   };
   const when = item.publish_status === "published" ? item.published_at : item.scheduled_at;
+  const cover = (item.posts?.post_media || [])
+    .filter((m) => m.public_url && !m.is_video)
+    .sort((a, b) => a.position - b.position)[0];
   return {
     id: `lib-${item.id}`,
     caption: item.rewritten_caption || item.posts?.caption || "",
@@ -77,6 +88,7 @@ function mapLibraryQueueItemToPost(item: LibraryQueueItem): Post {
     source: "library",
     libraryQueueId: item.id,
     targetUsername: item.target?.ig_username,
+    mediaUrl: cover?.public_url ?? undefined,
   };
 }
 

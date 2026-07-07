@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Post, Platform, PLATFORM_COLORS } from "@/types/social";
 import { Card, CardContent } from "@/components/ui/card";
 import { PostTypeBadge } from "@/components/social-manager/post-type-badge";
@@ -105,8 +106,18 @@ export function PostCard({ post, onDelete }: PostCardProps) {
           )}
         </div>
 
-        <div className="h-[112px] bg-accent/50 rounded-lg flex items-center justify-center relative hover:bg-accent/70 transition-colors">
-          <ImageIcon className="w-8 h-8 text-muted-foreground/40" />
+        <div className="h-[112px] bg-accent/50 rounded-lg overflow-hidden flex items-center justify-center relative hover:bg-accent/70 transition-colors">
+          {post.mediaUrl ? (
+            <Image
+              src={post.mediaUrl}
+              alt={post.caption.slice(0, 60)}
+              fill
+              unoptimized
+              className="object-cover"
+            />
+          ) : (
+            <ImageIcon className="w-8 h-8 text-muted-foreground/40" />
+          )}
           {post.videoDuration && (
             <span className="absolute bottom-1.5 right-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
               {post.videoDuration}
