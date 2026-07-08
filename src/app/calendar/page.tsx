@@ -13,11 +13,18 @@ import {
   addMonths,
   subMonths,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter, ImageOff } from "lucide-react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useSocialMediaStore } from "@/hooks/useSocialMediaStore";
 import { Post, Platform } from "@/types/social";
 import { NewPostDialog } from "@/components/social-manager/new-post-dialog";
@@ -28,6 +35,8 @@ type ContentType = "post" | "reel" | "story" | "carousel" | "video" | "short" | 
 interface ContentItem {
   id: string;
   title: string;
+  caption: string;
+  mediaUrl?: string;
   platform: Platform;
   date: Date;
   status: ContentStatus;
@@ -116,6 +125,8 @@ function buildContentFromStore(
         id: post.id,
         title:
           post.caption.slice(0, 40) + (post.caption.length > 40 ? "..." : ""),
+        caption: post.caption,
+        mediaUrl: post.mediaUrl,
         platform: platform as Platform,
         date,
         status: asContentStatus(post.status),
@@ -202,6 +213,7 @@ export default function CalendarPage() {
   const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   return (
+    <TooltipProvider delay={200}>
     <div className="min-h-screen bg-zinc-950 p-4 md:p-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
@@ -314,29 +326,53 @@ export default function CalendarPage() {
 
                   <div className="flex flex-col gap-0.5">
                     {items.slice(0, 3).map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() =>
-                          setSelectedItem(
-                            selectedItem?.id === item.id ? null : item
-                          )
-                        }
-                        className={cn(
-                          "group flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] leading-tight transition-colors",
-                          "hover:bg-zinc-700/50",
-                          selectedItem?.id === item.id && "bg-zinc-700/70"
-                        )}
-                      >
-                        <span
-                          className="inline-block size-1.5 shrink-0 rounded-full"
-                          style={{
-                            backgroundColor: PLATFORM_COLORS[item.platform],
-                          }}
-                        />
-                        <span className="truncate text-zinc-300 group-hover:text-white">
-                          {item.title}
-                        </span>
-                      </button>
+                      <Tooltip key={item.id}>
+                        <TooltipTrigger
+                          onClick={() =>
+                            setSelectedItem(
+                              selectedItem?.id === item.id ? null : item
+                            )
+                          }
+                          className={cn(
+                            "group flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] leading-tight transition-colors",
+                            "hover:bg-zinc-700/50",
+                            selectedItem?.id === item.id && "bg-zinc-700/70"
+                          )}
+                        >
+                          <span
+                            className="inline-block size-1.5 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: PLATFORM_COLORS[item.platform],
+                            }}
+                          />
+                          <span className="truncate text-zinc-300 group-hover:text-white">
+                            {item.title}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="right"
+                          className="w-64 max-w-64 flex-col items-stretch gap-0 rounded-lg bg-zinc-900 p-0 text-zinc-100 ring-1 ring-zinc-700"
+                        >
+                          <div className="relative aspect-square w-full overflow-hidden rounded-t-lg bg-zinc-800">
+                            {item.mediaUrl ? (
+                              <Image
+                                src={item.mediaUrl}
+                                alt={item.caption.slice(0, 60)}
+                                fill
+                                unoptimized
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center">
+                                <ImageOff className="size-6 text-zinc-600" />
+                              </div>
+                            )}
+                          </div>
+                          <p className="line-clamp-5 whitespace-pre-line p-2.5 text-[11px] leading-relaxed text-zinc-300">
+                            {item.caption || "No caption"}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
                     ))}
                     {items.length > 3 && (
                       <span className="px-1 text-[10px] text-zinc-500">
@@ -361,33 +397,54 @@ export default function CalendarPage() {
                   backgroundColor: PLATFORM_COLORS[selectedItem.platform],
                 }}
               />
-              {selectedItem.title}
+              Post details
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <Badge variant="secondary" className="capitalize">
-                {selectedItem.platform}
-              </Badge>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "capitalize",
-                  statusClasses(selectedItem.status)
-                )}
-              >
-                {selectedItem.status}
-              </Badge>
-              <Badge variant="outline" className="capitalize text-zinc-400">
-                {selectedItem.type}
-              </Badge>
-              <span className="text-zinc-500">
-                {format(selectedItem.date, "EEEE, MMMM d, yyyy")}
-              </span>
+          <CardContent className="flex flex-col gap-4 sm:flex-row">
+            <div className="relative aspect-square w-full shrink-0 overflow-hidden rounded-lg bg-zinc-800 sm:w-40">
+              {selectedItem.mediaUrl ? (
+                <Image
+                  src={selectedItem.mediaUrl}
+                  alt={selectedItem.caption.slice(0, 60)}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <ImageOff className="size-6 text-zinc-600" />
+                </div>
+              )}
+            </div>
+            <div className="flex-1 space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <Badge variant="secondary" className="capitalize">
+                  {selectedItem.platform}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "capitalize",
+                    statusClasses(selectedItem.status)
+                  )}
+                >
+                  {selectedItem.status}
+                </Badge>
+                <Badge variant="outline" className="capitalize text-zinc-400">
+                  {selectedItem.type}
+                </Badge>
+                <span className="text-zinc-500">
+                  {format(selectedItem.date, "EEEE, MMMM d, yyyy")}
+                </span>
+              </div>
+              <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-300">
+                {selectedItem.caption || "No caption"}
+              </p>
             </div>
           </CardContent>
         </Card>
       )}
     </div>
+    </TooltipProvider>
   );
 }
