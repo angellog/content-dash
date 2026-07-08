@@ -38,17 +38,35 @@ import { LibraryPost, LibraryStats, LibraryTarget } from "@/types/library";
 const STATUS_FILTERS = ["all", "pending", "approved", "queued", "rejected"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 
+// Colors are deliberately NOT shared with Social Manager's Scheduled/Drafts/
+// Published/Backlog columns, except "queued" — that one is the same real
+// concept (a post_queue row) viewed from a different page, so it reuses
+// Social Manager's exact blue. Pending/Approved/Rejected are curation states
+// with no Social Manager equivalent; giving them colors from that palette
+// would imply a correspondence that doesn't exist.
 const STATUS_BADGE: Record<string, string> = {
-  pending: "bg-yellow-500/20 text-yellow-400",
-  approved: "bg-emerald-500/20 text-emerald-400",
+  pending: "bg-violet-500/20 text-violet-400",
+  approved: "bg-cyan-500/20 text-cyan-400",
   queued: "bg-blue-500/20 text-blue-400",
   rejected: "bg-red-500/20 text-red-400",
+};
+
+// Once a post is queued, this is its actual position in the SAME publish
+// pipeline Social Manager's kanban shows — same labels, same colors, so a
+// post looks identical whichever page you view it from.
+const QUEUE_SUBSTATUS_BADGE: Record<string, { label: string; className: string }> = {
+  draft: { label: "Draft", className: "bg-yellow-500/20 text-yellow-400" },
+  scheduled: { label: "Scheduled", className: "bg-blue-500/20 text-blue-400" },
+  publishing: { label: "Scheduled", className: "bg-blue-500/20 text-blue-400" },
+  published: { label: "Published", className: "bg-green-500/20 text-green-400" },
+  failed: { label: "Backlog", className: "bg-zinc-500/20 text-zinc-400" },
 };
 
 export default function LibraryPage() {
   const [posts, setPosts] = useState<LibraryPost[]>([]);
   const [stats, setStats] = useState<LibraryStats | null>(null);
   const [targets, setTargets] = useState<LibraryTarget[]>([]);
+  const [queueByPostId, setQueueByPostId] = useState<Record<number, { publish_status: string; scheduled_at: string | null }>>({});
   const [status, setStatus] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -70,9 +88,10 @@ export default function LibraryPage() {
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (searchTerm) params.set("search", searchTerm);
 
-      const [postsRes, statsRes] = await Promise.all([
+      const [postsRes, statsRes, queueRes] = await Promise.all([
         fetch(`/api/library/posts?${params.toString()}`),
         fetch("/api/library/stats"),
+        fetch("/api/library/queue?limit=100"),
       ]);
 
       const postsJson = await postsRes.json();
@@ -81,6 +100,19 @@ export default function LibraryPage() {
 
       const statsJson = await statsRes.json();
       if (statsRes.ok) setStats(statsJson);
+
+      if (queueRes.ok) {
+        const queueJson = await queueRes.json();
+        const byPost: Record<number, { publish_status: string; scheduled_at: string | null }> = {};
+        for (const item of queueJson.queue || []) {
+          const postId = item.posts?.id;
+          // A post can be queued to multiple targets — most recent wins for display.
+          if (postId && !byPost[postId]) {
+            byPost[postId] = { publish_status: item.publish_status, scheduled_at: item.scheduled_at };
+          }
+        }
+        setQueueByPostId(byPost);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reach content library");
       setPosts([]);
@@ -292,13 +324,27 @@ export default function LibraryPage() {
                       <ImageOff className="size-6 text-zinc-600" />
                     </div>
                   )}
-                  <Badge
-                    className={`absolute top-2 left-2 text-[10px] px-1.5 py-0.5 capitalize ${
-                      STATUS_BADGE[post.status] || "bg-zinc-800 text-zinc-300"
-                    }`}
-                  >
-                    {post.status}
-                  </Badge>
+                  <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
+                    <Badge
+                      className={`text-[10px] px-1.5 py-0.5 capitalize ${
+                        STATUS_BADGE[post.status] || "bg-zinc-800 text-zinc-300"
+                      }`}
+                    >
+                      {post.status}
+                    </Badge>
+                    {post.status === "queued" && queueByPostId[post.id] && (
+                      <Badge
+                        className={`text-[10px] px-1.5 py-0.5 ${
+                          QUEUE_SUBSTATUS_BADGE[queueByPostId[post.id].publish_status]?.className ??
+                          "bg-zinc-800 text-zinc-300"
+                        }`}
+                        title="Same status Social Manager shows for this post"
+                      >
+                        {QUEUE_SUBSTATUS_BADGE[queueByPostId[post.id].publish_status]?.label ??
+                          queueByPostId[post.id].publish_status}
+                      </Badge>
+                    )}
+                  </div>
                   {post.is_carousel && (
                     <Badge className="absolute top-2 right-2 text-[10px] px-1.5 py-0.5 bg-black/60 text-white">
                       {post.media_count}
