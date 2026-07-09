@@ -97,6 +97,7 @@ export interface AgentConfig {
   agentFramework: AgentFramework;
   hermesEndpointUrl: string | null;
   hermesApiKeyEncrypted: string | null;
+  higgsfieldApiKeyEncrypted: string | null;
   twilioAccountSid: string | null;
   twilioAuthTokenEncrypted: string | null;
   twilioWhatsappNumber: string | null;

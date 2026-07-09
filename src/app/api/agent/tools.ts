@@ -135,6 +135,32 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       required: ["cardName", "redirectType", "destinationUrl"],
     },
   },
+  {
+    name: "generate_image",
+    description:
+      "Generate an image or short video from a text prompt using Higgsfield AI, then return the hosted media URL. Use this to create original visual assets for social posts (e.g. before calling post_to_omnisocial with the returned URL as a media_url). Requires the user to have configured a Higgsfield API key in Settings.",
+    parameters: {
+      type: "object",
+      properties: {
+        prompt: {
+          type: "string",
+          description:
+            "Detailed description of the image or video to generate. Be specific about subject, style, lighting, and composition.",
+        },
+        type: {
+          type: "string",
+          description:
+            "What to generate: 'image' (default) for a still image, or 'video' for a short generated clip.",
+        },
+        aspect_ratio: {
+          type: "string",
+          description:
+            "Optional aspect ratio, e.g. '1:1', '9:16', '16:9'. Defaults to '1:1'.",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
 ];
 
 export type AgentToolName = (typeof AGENT_TOOLS)[number]["name"];

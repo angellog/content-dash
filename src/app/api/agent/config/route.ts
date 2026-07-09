@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   const { data: config } = await supabase
     .from("AgentConfig")
-    .select("llmProvider, llmApiKeyEncrypted, twilioAccountSid, twilioAuthTokenEncrypted, twilioWhatsappNumber, isActive, agentFramework, hermesEndpointUrl, hermesApiKeyEncrypted")
+    .select("llmProvider, llmApiKeyEncrypted, twilioAccountSid, twilioAuthTokenEncrypted, twilioWhatsappNumber, isActive, agentFramework, hermesEndpointUrl, hermesApiKeyEncrypted, higgsfieldApiKeyEncrypted")
     .eq("userId", user.id)
     .single();
 
@@ -41,6 +41,11 @@ export async function GET(req: NextRequest) {
     try { maskedHermesKey = maskKey(decrypt(config.hermesApiKeyEncrypted)); } catch { maskedHermesKey = "****"; }
   }
 
+  let maskedHiggsfieldKey = null;
+  if (config.higgsfieldApiKeyEncrypted) {
+    try { maskedHiggsfieldKey = maskKey(decrypt(config.higgsfieldApiKeyEncrypted)); } catch { maskedHiggsfieldKey = "****"; }
+  }
+
   return NextResponse.json({
     isActive: config.isActive,
     llmProvider: config.llmProvider,
@@ -48,6 +53,7 @@ export async function GET(req: NextRequest) {
     agentFramework: config.agentFramework || "openclaw",
     hermesEndpointUrl: config.hermesEndpointUrl || "",
     hermesApiKeyMasked: maskedHermesKey,
+    higgsfieldApiKeyMasked: maskedHiggsfieldKey,
     twilioAccountSid: config.twilioAccountSid,
     twilioAuthTokenMasked: maskedToken,
     twilioWhatsappNumber: config.twilioWhatsappNumber,
@@ -67,7 +73,7 @@ export async function PUT(req: NextRequest) {
   if ("error" in parsed) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
-  const { llmProvider, llmApiKey, twilioAccountSid, twilioAuthToken, twilioWhatsappNumber, isActive, agentFramework, hermesEndpointUrl, hermesApiKey } = parsed.data;
+  const { llmProvider, llmApiKey, twilioAccountSid, twilioAuthToken, twilioWhatsappNumber, isActive, agentFramework, hermesEndpointUrl, hermesApiKey, higgsfieldApiKey } = parsed.data;
 
   const { data: existing } = await supabase
     .from("AgentConfig")
@@ -93,6 +99,9 @@ export async function PUT(req: NextRequest) {
   }
   if (hermesApiKey && hermesApiKey !== "****") {
     try { updateData.hermesApiKeyEncrypted = encrypt(hermesApiKey); } catch { return NextResponse.json({ error: "Failed to encrypt Hermes API key" }, { status: 500 }); }
+  }
+  if (higgsfieldApiKey && higgsfieldApiKey !== "****") {
+    try { updateData.higgsfieldApiKeyEncrypted = encrypt(higgsfieldApiKey); } catch { return NextResponse.json({ error: "Failed to encrypt Higgsfield API key" }, { status: 500 }); }
   }
 
   let result;

@@ -11,6 +11,7 @@ export const agentConfigPutSchema = z.object({
   llmApiKey: z.string().min(1).optional(),
   hermesEndpointUrl: z.string().url("Invalid Hermes endpoint URL").optional().or(z.literal("")),
   hermesApiKey: z.string().min(1).optional(),
+  higgsfieldApiKey: z.string().min(1).optional(),
   twilioAccountSid: z.string().optional(),
   twilioAuthToken: z.string().optional(),
   twilioWhatsappNumber: z.string().optional(),

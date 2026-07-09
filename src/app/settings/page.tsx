@@ -35,6 +35,7 @@ import {
   ArrowLeftRight,
   Cpu,
   MessageSquare,
+  Sparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -103,6 +104,7 @@ export default function SettingsPage() {
   const [agentFramework, setAgentFramework] = useState<string>("openclaw");
   const [hermesEndpointUrl, setHermesEndpointUrl] = useState("");
   const [hermesApiKey, setHermesApiKey] = useState("");
+  const [higgsfieldApiKey, setHiggsfieldApiKey] = useState("");
   const [agentActive, setAgentActive] = useState(false);
   const [twilioSid, setTwilioSid] = useState("");
   const [twilioAuthToken, setTwilioAuthToken] = useState("");
@@ -144,6 +146,7 @@ export default function SettingsPage() {
           useAgentConfigStore.getState().setAgentFramework(data.agentFramework ?? "openclaw");
           setHermesEndpointUrl(data.hermesEndpointUrl ?? "");
           setHermesApiKey(data.hermesApiKeyMasked ?? "");
+          setHiggsfieldApiKey(data.higgsfieldApiKeyMasked ?? "");
           setTwilioSid(data.twilioAccountSid ?? "");
           setTwilioAuthToken(data.twilioAuthTokenMasked ?? "");
           setTwilioNumber(data.twilioWhatsappNumber ?? "");
@@ -241,6 +244,7 @@ export default function SettingsPage() {
         llmApiKey: agentFramework === "openclaw" && llmApiKey ? llmApiKey : undefined,
         hermesEndpointUrl: agentFramework === "hermes" ? hermesEndpointUrl : undefined,
         hermesApiKey: agentFramework === "hermes" && hermesApiKey && hermesApiKey !== "****" ? hermesApiKey : undefined,
+        higgsfieldApiKey: higgsfieldApiKey && !higgsfieldApiKey.startsWith("****") ? higgsfieldApiKey : undefined,
         twilioAccountSid: twilioSid || undefined,
         twilioWhatsappNumber: twilioNumber || undefined,
         isActive: true,
@@ -544,6 +548,35 @@ export default function SettingsPage() {
                 </div>
               </>
             )}
+
+            <Separator className="bg-zinc-800" />
+
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="h-4 w-4 text-fuchsia-400" />
+              <span className="text-sm font-medium text-zinc-300">Higgsfield Media Generation</span>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-zinc-300 text-sm">Higgsfield API Key <span className="text-zinc-600">(optional)</span></Label>
+              <Input
+                type="password"
+                placeholder="KEY_ID:KEY_SECRET"
+                value={higgsfieldApiKey}
+                onChange={(e) => setHiggsfieldApiKey(e.target.value)}
+                className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
+              />
+              <p className="text-xs text-zinc-500">
+                Encrypted at rest. Enables the agent&apos;s <span className="text-zinc-400">generate_image</span> tool to create images &amp; videos from prompts. Paste your <span className="text-zinc-400">KEY_ID:KEY_SECRET</span> from{" "}
+                <a
+                  href="https://platform.higgsfield.ai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 hover:text-zinc-300"
+                >
+                  platform.higgsfield.ai
+                </a>.
+              </p>
+            </div>
 
             <Separator className="bg-zinc-800" />
 
