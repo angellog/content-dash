@@ -59,6 +59,21 @@ describe("agentConfigPutSchema", () => {
     const result = agentConfigPutSchema.safeParse({ llmProvider: "cohere" });
     expect(result.success).toBe(false);
   });
+
+  it("accepts a higgsfieldApiKey", () => {
+    const result = agentConfigPutSchema.safeParse({ llmProvider: "anthropic", higgsfieldApiKey: "key-id:key-secret" });
+    expect(result.success).toBe(true);
+  });
+
+  it("treats higgsfieldApiKey as optional", () => {
+    const result = agentConfigPutSchema.safeParse({ llmProvider: "anthropic" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an empty higgsfieldApiKey", () => {
+    const result = agentConfigPutSchema.safeParse({ llmProvider: "anthropic", higgsfieldApiKey: "" });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("paymentPostSchema", () => {
