@@ -37,7 +37,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,8 +45,27 @@ function LoginContent() {
     setError(null);
     const supabase = createClient();
 
+    // window.location.origin is always the real domain the page is
+    // currently being served from — production, a preview URL, or local
+    // dev — so this can never drift out of sync the way a hardcoded env
+    // var or Supabase's dashboard "Site URL" default can (and did, twice).
+    const emailRedirectTo = `${window.location.origin}/api/auth/callback`;
+
     if (mode === "signup") {
-      const { error: err } = await supabase.auth.signUp({ email, password });
+      const { error: err } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo },
+      });
+      if (err) {
+        setError(err.message);
+      } else {
+        setSent(true);
+      }
+    } else if (mode === "forgot") {
+      const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/api/auth/callback?redirect=/reset-password`,
+      });
       if (err) {
         setError(err.message);
       } else {
@@ -75,14 +94,19 @@ function LoginContent() {
           <CardHeader>
             <CardTitle className="text-zinc-100">Check your email</CardTitle>
             <CardDescription className="text-zinc-400">
-              We sent a confirmation link to {email}
+              {mode === "forgot"
+                ? `We sent a password reset link to ${email}`
+                : `We sent a confirmation link to ${email}`}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button
               variant="outline"
               className="w-full border-zinc-700 text-zinc-300"
-              onClick={() => setSent(false)}
+              onClick={() => {
+                setSent(false);
+                setMode("login");
+              }}
             >
               Back to login
             </Button>
@@ -100,7 +124,9 @@ function LoginContent() {
           <CardDescription className="text-zinc-400">
             {mode === "login"
               ? "Sign in to your account"
-              : "Create your account"}
+              : mode === "signup"
+                ? "Create your account"
+                : "Reset your password"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -119,26 +145,42 @@ function LoginContent() {
                 className="border-zinc-700 bg-zinc-950 text-zinc-100 placeholder:text-zinc-600"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-zinc-300">
-                Password
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="border-zinc-700 bg-zinc-950 text-zinc-100 placeholder:text-zinc-600"
-              />
-              {strength && (
-                <p className={`text-xs ${strength.color}`}>
-                  Password strength: {strength.label}
-                </p>
-              )}
-            </div>
+            {mode !== "forgot" && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password" className="text-zinc-300">
+                    Password
+                  </Label>
+                  {mode === "login" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode("forgot");
+                        setError(null);
+                      }}
+                      className="text-xs text-zinc-500 underline underline-offset-4 hover:text-zinc-300"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="border-zinc-700 bg-zinc-950 text-zinc-100 placeholder:text-zinc-600"
+                />
+                {strength && (
+                  <p className={`text-xs ${strength.color}`}>
+                    Password strength: {strength.label}
+                  </p>
+                )}
+              </div>
+            )}
 
             {error && (
               <p className="text-sm text-red-400 bg-red-500/10 rounded-md px-3 py-2">
@@ -149,20 +191,32 @@ function LoginContent() {
             <Button
               type="submit"
               className="w-full"
-              disabled={loading || !email || !password}
+              disabled={loading || !email || (mode !== "forgot" && !password)}
             >
               {loading
                 ? "Loading..."
                 : mode === "login"
                   ? "Sign In"
-                  : "Create Account"}
+                  : mode === "signup"
+                    ? "Create Account"
+                    : "Send reset link"}
             </Button>
           </form>
 
           <Separator className="my-4 bg-zinc-800" />
 
           <p className="text-center text-sm text-zinc-500">
-            {mode === "login" ? (
+            {mode === "forgot" ? (
+              <button
+                onClick={() => {
+                  setMode("login");
+                  setError(null);
+                }}
+                className="text-zinc-300 underline underline-offset-4 hover:text-white"
+              >
+                Back to login
+              </button>
+            ) : mode === "login" ? (
               <>
                 Don&apos;t have an account?{" "}
                 <button
