@@ -4,6 +4,7 @@ import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { PageAgentWidget } from "@/components/agent/PageAgentWidget";
+import { QueryProvider } from "@/components/providers/query-provider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -28,14 +29,16 @@ export default function RootLayout({
       className={`${inter.variable} dark h-full antialiased`}
     >
       <body className="min-h-full bg-zinc-950 text-zinc-100">
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <div className="flex flex-1 flex-col lg:pl-64">
-            {children}
+        <QueryProvider>
+          <div className="flex min-h-screen">
+            <Sidebar />
+            <div className="flex flex-1 flex-col lg:pl-64">
+              {children}
+            </div>
           </div>
-        </div>
-        <Toaster richColors position="bottom-right" />
-        <PageAgentWidget />
+          <Toaster richColors position="bottom-right" />
+          <PageAgentWidget />
+        </QueryProvider>
       </body>
     </html>
   );
