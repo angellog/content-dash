@@ -8,6 +8,12 @@ function maskKey(key: string) {
   return `****${key.slice(-4)}`;
 }
 
+// A client resubmitting the masked display value from GET (`****` or `****abcd`)
+// must never be treated as a new key — encrypting it would destroy the stored key.
+function isNewKeyValue(value: string | undefined): value is string {
+  return !!value && !value.startsWith("****");
+}
+
 export async function GET(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -91,16 +97,16 @@ export async function PUT(req: NextRequest) {
     updatedAt: new Date().toISOString(),
   };
 
-  if (llmApiKey && llmApiKey !== "****") {
+  if (isNewKeyValue(llmApiKey)) {
     try { updateData.llmApiKeyEncrypted = encrypt(llmApiKey); } catch { return NextResponse.json({ error: "Failed to encrypt LLM API key" }, { status: 500 }); }
   }
-  if (twilioAuthToken && twilioAuthToken !== "****") {
+  if (isNewKeyValue(twilioAuthToken)) {
     try { updateData.twilioAuthTokenEncrypted = encrypt(twilioAuthToken); } catch { return NextResponse.json({ error: "Failed to encrypt Twilio auth token" }, { status: 500 }); }
   }
-  if (hermesApiKey && hermesApiKey !== "****") {
+  if (isNewKeyValue(hermesApiKey)) {
     try { updateData.hermesApiKeyEncrypted = encrypt(hermesApiKey); } catch { return NextResponse.json({ error: "Failed to encrypt Hermes API key" }, { status: 500 }); }
   }
-  if (higgsfieldApiKey && higgsfieldApiKey !== "****") {
+  if (isNewKeyValue(higgsfieldApiKey)) {
     try { updateData.higgsfieldApiKeyEncrypted = encrypt(higgsfieldApiKey); } catch { return NextResponse.json({ error: "Failed to encrypt Higgsfield API key" }, { status: 500 }); }
   }
 

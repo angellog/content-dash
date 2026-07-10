@@ -243,7 +243,7 @@ export default function SettingsPage() {
         llmProvider: agentFramework === "openclaw" ? llmProvider : undefined,
         llmApiKey: agentFramework === "openclaw" && llmApiKey ? llmApiKey : undefined,
         hermesEndpointUrl: agentFramework === "hermes" ? hermesEndpointUrl : undefined,
-        hermesApiKey: agentFramework === "hermes" && hermesApiKey && hermesApiKey !== "****" ? hermesApiKey : undefined,
+        hermesApiKey: agentFramework === "hermes" && hermesApiKey && !hermesApiKey.startsWith("****") ? hermesApiKey : undefined,
         higgsfieldApiKey: higgsfieldApiKey && !higgsfieldApiKey.startsWith("****") ? higgsfieldApiKey : undefined,
         twilioAccountSid: twilioSid || undefined,
         twilioWhatsappNumber: twilioNumber || undefined,

@@ -224,6 +224,10 @@ const HIGGSFIELD_IMAGE_PATH = process.env.HIGGSFIELD_IMAGE_PATH || "/v1/text2ima
 const HIGGSFIELD_VIDEO_PATH = process.env.HIGGSFIELD_VIDEO_PATH || "/v1/image2video/dop";
 const HIGGSFIELD_POLL_ATTEMPTS = 30;
 const HIGGSFIELD_POLL_INTERVAL_MS = 2000;
+// Per-request timeout so a hung-but-open socket can't stall past the poll window,
+// and a hard wall-clock deadline for the whole poll loop regardless of fetch time.
+const HIGGSFIELD_FETCH_TIMEOUT_MS = 15_000;
+const HIGGSFIELD_MAX_WAIT_MS = 90_000;
 
 // Best-effort extraction of a hosted media URL from the varied Higgsfield response
 // shapes (job-set results, images[], video, or a flat url field).
@@ -277,7 +281,7 @@ async function executeGenerateImage(
   serviceKey: string,
   userId: string
 ): Promise<string> {
-  const prompt = (args.prompt as string)?.trim();
+  const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
   if (!prompt) {
     return "No prompt provided. Describe the image or video you want to generate.";
   }
@@ -292,6 +296,7 @@ async function executeGenerateImage(
         apikey: serviceKey,
         Authorization: `Bearer ${serviceKey}`,
       },
+      signal: AbortSignal.timeout(HIGGSFIELD_FETCH_TIMEOUT_MS),
     }
   ).catch(() => null);
 
@@ -328,6 +333,7 @@ async function executeGenerateImage(
         batch_size: 1,
       },
     }),
+    signal: AbortSignal.timeout(HIGGSFIELD_FETCH_TIMEOUT_MS),
   }).catch(() => null);
 
   if (!submitRes) {
@@ -354,12 +360,15 @@ async function executeGenerateImage(
     return "Higgsfield accepted the request but returned no job id or media URL to track.";
   }
 
-  // Poll the job status until it completes (or fails / times out).
-  for (let attempt = 0; attempt < HIGGSFIELD_POLL_ATTEMPTS; attempt++) {
+  // Poll the job status until it completes (or fails / times out). Bounded both by
+  // attempt count and by wall-clock time so slow status fetches can't extend the window.
+  const pollDeadline = Date.now() + HIGGSFIELD_MAX_WAIT_MS;
+  for (let attempt = 0; attempt < HIGGSFIELD_POLL_ATTEMPTS && Date.now() < pollDeadline; attempt++) {
     await new Promise((r) => setTimeout(r, HIGGSFIELD_POLL_INTERVAL_MS));
 
-    const statusRes = await fetch(`${HIGGSFIELD_BASE}/v1/requests/${jobId}/status`, {
+    const statusRes = await fetch(`${HIGGSFIELD_BASE}/v1/requests/${encodeURIComponent(jobId)}/status`, {
       headers: authHeaders,
+      signal: AbortSignal.timeout(HIGGSFIELD_FETCH_TIMEOUT_MS),
     }).catch(() => null);
     if (!statusRes || !statusRes.ok) continue;
 
