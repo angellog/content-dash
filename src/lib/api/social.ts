@@ -1,4 +1,5 @@
 import { Platform, Post, PostStatus } from "@/types/social";
+import { mapPublishStatus } from "@/lib/library-status";
 
 const API_BASE = "/api/omnisocial";
 
@@ -53,6 +54,7 @@ interface LibraryQueueItem {
   scheduled_at: string | null;
   published_at: string | null;
   publish_status: "draft" | "scheduled" | "publishing" | "published" | "failed";
+  error_message: string | null;
   posts: {
     id: number;
     caption: string;
@@ -66,13 +68,7 @@ interface LibraryQueueItem {
 // Library queue items only ever target Instagram (feetbit-library publishes
 // via the Meta/Composio paths), so they all land on the instagram lane.
 function mapLibraryQueueItemToPost(item: LibraryQueueItem): Post {
-  const statusMap: Record<LibraryQueueItem["publish_status"], PostStatus> = {
-    draft: "draft",
-    scheduled: "scheduled",
-    publishing: "scheduled",
-    published: "published",
-    failed: "backlog",
-  };
+  const effective = mapPublishStatus(item.publish_status);
   const when = item.publish_status === "published" ? item.published_at : item.scheduled_at;
   const cover = (item.posts?.post_media || [])
     .filter((m) => m.public_url && !m.is_video)
@@ -81,7 +77,9 @@ function mapLibraryQueueItemToPost(item: LibraryQueueItem): Post {
     id: `lib-${item.id}`,
     caption: item.rewritten_caption || item.posts?.caption || "",
     type: item.posts?.is_carousel ? "Carousel" : "Post",
-    status: statusMap[item.publish_status],
+    status: effective.kanbanStatus,
+    isFailed: effective.isFailed,
+    errorMessage: item.error_message ?? undefined,
     platform: "instagram",
     scheduledDate: when?.split("T")[0],
     scheduledTime: when?.split("T")[1]?.slice(0, 5),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import { toast } from "sonner";
 import {
@@ -33,44 +33,55 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { LibraryPost, LibraryStats, LibraryTarget } from "@/types/library";
+import { LibraryPost } from "@/types/library";
+import { mapPublishStatus, PublishStatus } from "@/lib/library-status";
+import {
+  useLibraryPosts,
+  useLibraryQueue,
+  useLibraryStats,
+  useLibraryTargets,
+  useApprovePost,
+  useQueuePost,
+  useCancelQueueItem,
+} from "@/lib/api/library-queries";
 
-const STATUS_FILTERS = ["all", "pending", "approved", "queued", "rejected"] as const;
-type StatusFilter = (typeof STATUS_FILTERS)[number];
+// Primary tabs mirror Social Manager's kanban buckets exactly (draft/
+// scheduled/published/backlog), since that's the whole point of this page
+// syncing with what Social Manager says is true. "Needs Review" is the one
+// bucket with no Social Manager equivalent — pending/approved/rejected posts
+// haven't entered the publish pipeline yet, so they get their own tab rather
+// than being force-fit into a kanban column that doesn't describe them.
+const PRIMARY_TABS = ["all", "needs_review", "draft", "scheduled", "published", "backlog"] as const;
+type PrimaryTab = (typeof PRIMARY_TABS)[number];
+
+const PRIMARY_TAB_LABELS: Record<PrimaryTab, string> = {
+  all: "All",
+  needs_review: "Needs Review",
+  draft: "Draft",
+  scheduled: "Scheduled",
+  published: "Published",
+  backlog: "Backlog",
+};
 
 // Colors are deliberately NOT shared with Social Manager's Scheduled/Drafts/
-// Published/Backlog columns, except "queued" — that one is the same real
-// concept (a post_queue row) viewed from a different page, so it reuses
-// Social Manager's exact blue. Pending/Approved/Rejected are curation states
-// with no Social Manager equivalent; giving them colors from that palette
-// would imply a correspondence that doesn't exist.
+// Published/Backlog columns, except "queued" and "published" — those are the
+// same real concepts (a post_queue row's eventual outcome) viewed from a
+// different page, so they reuse Social Manager's exact colors via
+// mapPublishStatus. Pending/Approved/Rejected are curation states with no
+// Social Manager equivalent; giving them colors from that palette would
+// imply a correspondence that doesn't exist.
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-violet-500/20 text-violet-400",
   approved: "bg-cyan-500/20 text-cyan-400",
   queued: "bg-blue-500/20 text-blue-400",
   rejected: "bg-red-500/20 text-red-400",
-};
-
-// Once a post is queued, this is its actual position in the SAME publish
-// pipeline Social Manager's kanban shows — same labels, same colors, so a
-// post looks identical whichever page you view it from.
-const QUEUE_SUBSTATUS_BADGE: Record<string, { label: string; className: string }> = {
-  draft: { label: "Draft", className: "bg-yellow-500/20 text-yellow-400" },
-  scheduled: { label: "Scheduled", className: "bg-blue-500/20 text-blue-400" },
-  publishing: { label: "Scheduled", className: "bg-blue-500/20 text-blue-400" },
-  published: { label: "Published", className: "bg-green-500/20 text-green-400" },
-  failed: { label: "Backlog", className: "bg-zinc-500/20 text-zinc-400" },
+  published: "bg-green-500/20 text-green-400",
 };
 
 export default function LibraryPage() {
-  const [posts, setPosts] = useState<LibraryPost[]>([]);
-  const [stats, setStats] = useState<LibraryStats | null>(null);
-  const [targets, setTargets] = useState<LibraryTarget[]>([]);
-  const [queueByPostId, setQueueByPostId] = useState<Record<number, { publish_status: string; scheduled_at: string | null }>>({});
-  const [status, setStatus] = useState<StatusFilter>("all");
+  const [tab, setTab] = useState<PrimaryTab>("all");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const [queuePost, setQueuePost] = useState<LibraryPost | null>(null);
@@ -78,82 +89,93 @@ export default function LibraryPage() {
   const [queueCaption, setQueueCaption] = useState("");
   const [queueDate, setQueueDate] = useState("");
   const [queueTime, setQueueTime] = useState("");
-  const [queueSaving, setQueueSaving] = useState(false);
 
-  const load = useCallback(async (statusFilter: StatusFilter, searchTerm: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({ limit: "40" });
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (searchTerm) params.set("search", searchTerm);
+  // Each posts.status value is fetched in its own top-N-by-recency slice so
+  // tab-switching (client-side, over already-fetched data) can't accidentally
+  // hide older posts of a less-common status behind a global recency cutoff —
+  // the old single-status-param fetch had this problem for anything but the
+  // active filter.
+  const pendingQuery = useLibraryPosts("pending", search);
+  const approvedQuery = useLibraryPosts("approved", search);
+  const rejectedQuery = useLibraryPosts("rejected", search);
+  const queuedQuery = useLibraryPosts("queued", search);
+  const publishedQuery = useLibraryPosts("published", search);
+  const queueQuery = useLibraryQueue();
+  const statsQuery = useLibraryStats();
+  const targetsQuery = useLibraryTargets();
+  const approveMutation = useApprovePost();
+  const queueMutation = useQueuePost();
+  const cancelMutation = useCancelQueueItem();
 
-      const [postsRes, statsRes, queueRes] = await Promise.all([
-        fetch(`/api/library/posts?${params.toString()}`),
-        fetch("/api/library/stats"),
-        fetch("/api/library/queue?limit=100"),
-      ]);
-
-      const postsJson = await postsRes.json();
-      if (!postsRes.ok) throw new Error(postsJson.error || "Failed to load library posts");
-      setPosts(postsJson.posts || []);
-
-      const statsJson = await statsRes.json();
-      if (statsRes.ok) setStats(statsJson);
-
-      if (queueRes.ok) {
-        const queueJson = await queueRes.json();
-        const byPost: Record<number, { publish_status: string; scheduled_at: string | null }> = {};
-        for (const item of queueJson.queue || []) {
-          const postId = item.posts?.id;
-          // A post can be queued to multiple targets — most recent wins for display.
-          if (postId && !byPost[postId]) {
-            byPost[postId] = { publish_status: item.publish_status, scheduled_at: item.scheduled_at };
-          }
-        }
-        setQueueByPostId(byPost);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reach content library");
-      setPosts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load(status, search);
+  const allPostQueries = [pendingQuery, approvedQuery, rejectedQuery, queuedQuery, publishedQuery];
+  const posts = useMemo(
+    () => allPostQueries.flatMap((q) => q.data ?? []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+    [pendingQuery.data, approvedQuery.data, rejectedQuery.data, queuedQuery.data, publishedQuery.data]
+  );
+  const stats = statsQuery.data ?? null;
+  const targets = targetsQuery.data ?? [];
+  const loading = allPostQueries.some((q) => q.isLoading);
+  const firstError = allPostQueries.find((q) => q.isError)?.error;
+  const error = firstError
+    ? firstError instanceof Error
+      ? firstError.message
+      : "Failed to reach content library"
+    : null;
 
-  useEffect(() => {
-    fetch("/api/library/targets")
-      .then((res) => res.json())
-      .then((data) => setTargets(data.targets || []))
-      .catch(() => setTargets([]));
-  }, []);
+  const queueByPostId = useMemo(() => {
+    const byPost: Record<
+      number,
+      { id: number; publish_status: PublishStatus; scheduled_at: string | null }
+    > = {};
+    for (const item of queueQuery.data ?? []) {
+      const postId = item.posts?.id;
+      // A post can be queued to multiple targets — most recent wins for display.
+      if (postId && !byPost[postId]) {
+        byPost[postId] = { id: item.id, publish_status: item.publish_status, scheduled_at: item.scheduled_at };
+      }
+    }
+    return byPost;
+  }, [queueQuery.data]);
 
-  const setLocalStatus = (id: number, newStatus: string) => {
-    setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, status: newStatus as LibraryPost["status"] } : p)));
+  const handleCancelQueueItem = (queueItemId: number) => {
+    cancelMutation.mutate(queueItemId, {
+      onSuccess: () => toast.success("Removed from queue"),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to cancel"),
+    });
   };
 
-  const handleApprove = async (post: LibraryPost, newStatus: "approved" | "rejected") => {
-    setBusyId(post.id);
-    try {
-      const res = await fetch("/api/library/posts", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: post.id, status: newStatus }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to update post");
-      setLocalStatus(post.id, newStatus);
-      toast.success(newStatus === "approved" ? "Post approved" : "Post rejected");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update post");
-    } finally {
-      setBusyId(null);
+  const filteredPosts = useMemo(() => {
+    if (tab === "all") return posts;
+    if (tab === "needs_review") {
+      return posts.filter(
+        (p) => p.status === "pending" || p.status === "approved" || p.status === "rejected"
+      );
     }
+    return posts.filter((p) => {
+      const entry = queueByPostId[p.id];
+      if (!entry) return false;
+      return mapPublishStatus(entry.publish_status).kanbanStatus === tab;
+    });
+  }, [posts, tab, queueByPostId]);
+
+  const refreshAll = () => {
+    for (const q of allPostQueries) q.refetch();
+    queueQuery.refetch();
+    statsQuery.refetch();
+    targetsQuery.refetch();
+  };
+
+  const handleApprove = (post: LibraryPost, newStatus: "approved" | "rejected") => {
+    setBusyId(post.id);
+    approveMutation.mutate(
+      { id: post.id, status: newStatus },
+      {
+        onSuccess: () => toast.success(newStatus === "approved" ? "Post approved" : "Post rejected"),
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update post"),
+        onSettled: () => setBusyId(null),
+      }
+    );
   };
 
   const openQueueDialog = (post: LibraryPost) => {
@@ -164,38 +186,30 @@ export default function LibraryPage() {
     setQueueTime("");
   };
 
-  const handleQueueSubmit = async () => {
+  const handleQueueSubmit = () => {
     if (!queuePost || !queueTarget) return;
-    setQueueSaving(true);
-    try {
-      const scheduledAt =
-        queueDate && queueTime ? new Date(`${queueDate}T${queueTime}`).toISOString() : null;
+    const scheduledAt =
+      queueDate && queueTime ? new Date(`${queueDate}T${queueTime}`).toISOString() : null;
 
-      const res = await fetch("/api/library/queue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          post_id: queuePost.id,
-          target_id: Number(queueTarget),
-          rewritten_caption: queueCaption !== queuePost.caption ? queueCaption : null,
-          scheduled_at: scheduledAt,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to queue post");
-
-      setLocalStatus(queuePost.id, "queued");
-      toast.success(
-        scheduledAt
-          ? "Queued — will publish via feetbit-library's scheduled cron"
-          : "Saved as a draft in the queue (no publish time set yet)"
-      );
-      setQueuePost(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to queue post");
-    } finally {
-      setQueueSaving(false);
-    }
+    queueMutation.mutate(
+      {
+        post_id: queuePost.id,
+        target_id: Number(queueTarget),
+        rewritten_caption: queueCaption !== queuePost.caption ? queueCaption : null,
+        scheduled_at: scheduledAt,
+      },
+      {
+        onSuccess: () => {
+          toast.success(
+            scheduledAt
+              ? "Queued — will publish via feetbit-library's scheduled cron"
+              : "Saved as a draft in the queue (no publish time set yet)"
+          );
+          setQueuePost(null);
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to queue post"),
+      }
+    );
   };
 
   return (
@@ -215,7 +229,7 @@ export default function LibraryPage() {
           variant="outline"
           size="sm"
           className="border-zinc-800 text-zinc-300 hover:text-zinc-100"
-          onClick={() => load(status, search)}
+          onClick={refreshAll}
         >
           <RefreshCw className="size-3.5" />
           Refresh
@@ -253,31 +267,31 @@ export default function LibraryPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-1.5">
-          {STATUS_FILTERS.map((s) => (
+          {PRIMARY_TABS.map((t) => (
             <button
-              key={s}
-              onClick={() => setStatus(s)}
-              className={`text-xs px-3 py-1.5 rounded-full font-medium capitalize transition-colors ${
-                status === s
+              key={t}
+              onClick={() => setTab(t)}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                tab === t
                   ? "bg-indigo-500/20 text-indigo-400"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
               }`}
             >
-              {s}
+              {PRIMARY_TAB_LABELS[t]}
             </button>
           ))}
         </div>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            load(status, search);
+            setSearch(searchInput);
           }}
           className="relative w-full sm:w-64"
         >
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500" />
           <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search caption, brand, model..."
             className="pl-8 bg-zinc-900 border-zinc-800 text-zinc-100 focus-visible:ring-indigo-500"
           />
@@ -296,14 +310,14 @@ export default function LibraryPage() {
             <div key={i} className="aspect-square rounded-lg bg-zinc-900 animate-pulse" />
           ))}
         </div>
-      ) : posts.length === 0 && !error ? (
+      ) : filteredPosts.length === 0 && !error ? (
         <div className="flex flex-col items-center justify-center py-16 text-zinc-500">
           <ImageOff className="size-8 mb-2" />
           <p className="text-sm">No posts match this filter.</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {posts.map((post) => {
+          {filteredPosts.map((post) => {
             const cover = post.post_media?.[0];
             return (
               <Card
@@ -332,16 +346,14 @@ export default function LibraryPage() {
                     >
                       {post.status}
                     </Badge>
-                    {post.status === "queued" && queueByPostId[post.id] && (
+                    {queueByPostId[post.id] && (
                       <Badge
                         className={`text-[10px] px-1.5 py-0.5 ${
-                          QUEUE_SUBSTATUS_BADGE[queueByPostId[post.id].publish_status]?.className ??
-                          "bg-zinc-800 text-zinc-300"
+                          mapPublishStatus(queueByPostId[post.id].publish_status).badgeClassName
                         }`}
                         title="Same status Social Manager shows for this post"
                       >
-                        {QUEUE_SUBSTATUS_BADGE[queueByPostId[post.id].publish_status]?.label ??
-                          queueByPostId[post.id].publish_status}
+                        {mapPublishStatus(queueByPostId[post.id].publish_status).label}
                       </Badge>
                     )}
                   </div>
@@ -382,6 +394,21 @@ export default function LibraryPage() {
                       </Button>
                     </div>
                   )}
+
+                  {queueByPostId[post.id] &&
+                    (queueByPostId[post.id].publish_status === "draft" ||
+                      queueByPostId[post.id].publish_status === "scheduled") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={cancelMutation.isPending}
+                        className="h-7 w-full border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                        onClick={() => handleCancelQueueItem(queueByPostId[post.id].id)}
+                      >
+                        <X className="size-3" />
+                        Cancel
+                      </Button>
+                    )}
 
                   {post.status === "approved" && (
                     <Button
@@ -473,11 +500,11 @@ export default function LibraryPage() {
               Cancel
             </Button>
             <Button
-              disabled={!queueTarget || queueSaving}
+              disabled={!queueTarget || queueMutation.isPending}
               onClick={handleQueueSubmit}
               className="bg-indigo-600 hover:bg-indigo-500 text-white"
             >
-              {queueSaving ? "Saving..." : "Add to queue"}
+              {queueMutation.isPending ? "Saving..." : "Add to queue"}
             </Button>
           </DialogFooter>
         </DialogContent>

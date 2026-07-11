@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, Suspense } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { LayoutGrid, Grid3X3, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ import {
 } from "@/types/social";
 import { PLATFORM_CONFIG, CONNECTED_PLATFORMS } from "@/lib/omnisocial";
 import { useSocialMediaStore } from "@/hooks/useSocialMediaStore";
+import { useLibraryQueue } from "@/lib/api/library-queries";
 import { PlatformIconBar } from "@/components/social-manager/platform-icon-bar";
 import { PostCard } from "@/components/social-manager/post-card";
 import { NewPostDialog } from "@/components/social-manager/new-post-dialog";
@@ -81,6 +82,25 @@ function SocialManagerContent() {
       toast.error("Failed to load posts.");
     });
   }, []);
+
+  // Shares the library queue's React Query cache key with the Content
+  // Library page — when an approve/queue/cancel action there invalidates
+  // this key, this hook refetches too (same key, same cache), and we use
+  // that as a live signal to refresh the Zustand store's own merged view.
+  // fetchPosts() itself still owns the actual library fetch (it feeds
+  // Dashboard and Calendar too, which also depend on library posts being in
+  // the store) — this just re-triggers it so Social Manager doesn't need a
+  // manual page reload to see a change made on the Library page.
+  const libraryQueueQuery = useLibraryQueue();
+  const isFirstQueueSync = useRef(true);
+  useEffect(() => {
+    if (isFirstQueueSync.current) {
+      isFirstQueueSync.current = false;
+      return;
+    }
+    fetchPosts().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [libraryQueueQuery.dataUpdatedAt]);
 
   useEffect(() => {
     async function loadFollowerCounts() {

@@ -1,4 +1,4 @@
-export type LibraryPostStatus = "pending" | "approved" | "rejected" | "queued";
+export type LibraryPostStatus = "pending" | "approved" | "rejected" | "queued" | "published";
 
 export interface LibraryPostMedia {
   id: number;

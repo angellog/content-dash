@@ -112,6 +112,17 @@ export const libraryQueuePostSchema = z.object({
   scheduled_at: z.string().optional().nullable(),
 });
 
+export const libraryQueuePatchSchema = z.object({
+  id: z.int().positive(),
+  publish_status: z.enum(["draft", "scheduled", "publishing", "published", "failed"]).optional(),
+  scheduled_at: z.string().optional().nullable(),
+  rewritten_caption: z.string().optional().nullable(),
+});
+
+export const libraryQueueDeleteSchema = z.object({
+  id: z.int().positive(),
+});
+
 export function validateBody<T extends z.ZodType>(schema: T, body: unknown): { data: z.infer<T> } | { error: string } {
   const result = schema.safeParse(body);
   if (result.success) return { data: result.data };

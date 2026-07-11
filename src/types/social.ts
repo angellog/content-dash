@@ -36,6 +36,8 @@ export interface Post {
   libraryQueueId?: number;
   targetUsername?: string;
   mediaUrl?: string;
+  isFailed?: boolean;
+  errorMessage?: string;
 }
 
 export const PLATFORMS: Platform[] = [
