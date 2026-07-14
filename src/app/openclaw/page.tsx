@@ -353,7 +353,7 @@ export default function OpenClawAgent() {
                     {competitors.map((comp, idx) => (
                       <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg border border-zinc-800 bg-zinc-950/40 text-xs">
                         <span className="text-zinc-300 font-medium">{comp}</span>
-                        <Badge className="bg-violet-500/10 text-violet-400 border border-violet-500/20">Scraping Live</Badge>
+                        <Badge className="bg-zinc-700/40 text-zinc-400 border border-zinc-700">On watchlist</Badge>
                       </div>
                     ))}
                   </div>

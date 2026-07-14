@@ -4,6 +4,21 @@ All notable changes to ContentDash are documented in this file. The format follo
 
 ---
 
+## [2.3.0] - 2026-07-14
+
+### Changed
+
+**Analytics — honesty pass**
+- Removed a ~600-line archived/dead code block from the Analytics page.
+- Stat-card trend arrows were decorative (hardcoded "this period" with a fake up/down); replaced with an honest "For selected range" caption — the OmniSocial overview endpoint returns no period-over-period delta.
+- Added a Shares column to the Top Posts table (the metric was already in the API response, just unshown).
+- Follower-growth and time-series charts remain intentionally absent — the OmniSocial API doesn't return that data; documented rather than faked.
+
+**Competitor feature — real metrics (dormant-ready) + honesty**
+- Competitor metric columns (followers, engagement, posting frequency) were dead — nothing wrote them, and a "Scraping Live" badge was hardcoded. Added a real pipeline via the Instagram Graph API `business_discovery` field (through the feetbit-content-library bridge): a per-competitor Refresh button computes follower count, engagement rate, and posting frequency from live public business/creator data and persists them with a `lastScrapedAt` timestamp.
+- Dormant-ready: until an Instagram Graph token is configured on the bridge, refresh reports "not configured" and nothing is fabricated.
+- Fields `business_discovery` cannot provide (ad spend, audience demographics, comment sentiment, follower activity) now read "Not tracked" explicitly instead of showing fake/empty placeholders; audience health shows "Unrated" when there's no real sentiment data; the "Scraping Live" badge is now an honest "On watchlist".
+
 ## [2.2.0] - 2026-06-07
 
 ### Added

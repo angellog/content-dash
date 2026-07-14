@@ -13,6 +13,7 @@ import {
   ArrowUpDown,
   Sparkles,
   Trash2,
+  RefreshCw,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -131,7 +132,8 @@ interface Competitor {
   postFrequency: number;
   engagementRate: number;
   growthRate?: number;
-  audienceHealth: "Excellent" | "Good" | "Fair" | "At Risk";
+  lastScrapedAt?: string | null;
+  audienceHealth: "Excellent" | "Good" | "Fair" | "At Risk" | "Unrated";
   demographics?: {
     ageGroups: { label: string; percentage: number }[];
     topLocations: { label: string; percentage: number }[];
@@ -162,15 +164,19 @@ interface Competitor {
 }
 
 function mapApiCompetitor(c: Record<string, unknown>): Competitor {
+  // audienceSentiment isn't tracked by the current (business_discovery) data
+  // source, so health stays "Unrated" rather than defaulting everyone to a
+  // fabricated "Fair". Ad spend, demographics, and sentiment are likewise not
+  // populated \u2014 the detail panel shows them as "Not tracked", never faked.
   const sentiment = (c.audienceSentiment as string | null)?.toUpperCase();
   const audienceHealth: Competitor["audienceHealth"] =
     sentiment === "POSITIVE"
       ? "Excellent"
       : sentiment === "NEUTRAL"
         ? "Good"
-        : "Fair";
-
-  const spend = c.estimatedAdSpendMonthly as number | null;
+        : sentiment === "NEGATIVE"
+          ? "At Risk"
+          : "Unrated";
 
   return {
     id: c.id as string,
@@ -183,11 +189,8 @@ function mapApiCompetitor(c: Record<string, unknown>): Competitor {
     followers: (c.followersCount as number) ?? 0,
     postFrequency: (c.postingFrequencyWeekly as number) ?? 0,
     engagementRate: (c.avgEngagementRate as number) ?? 0,
+    lastScrapedAt: (c.lastScrapedAt as string) ?? null,
     audienceHealth,
-    promotedPostAnalysis: {
-      totalPromoted: (c.activeAdCampaignsCount as number) ?? 0,
-      estimatedSpend: spend != null ? `$${spend.toLocaleString()}` : "\u2014",
-    },
   };
 }
 
@@ -378,6 +381,30 @@ export default function CompetitorTrackerPage() {
     }
   };
 
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+
+  const handleRefreshCompetitor = async (id: string) => {
+    setRefreshingId(id);
+    try {
+      const res = await fetch(`/api/competitors/${id}/refresh`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setCompetitors((prev) => prev.map((c) => (c.id === id ? mapApiCompetitor(data) : c)));
+        toast.success("Competitor metrics refreshed.");
+      } else if (data.status === "NOT_CONFIGURED") {
+        toast.error("Competitor insights aren't configured yet — an Instagram Graph token is needed.");
+      } else if (data.status === "NOT_FOUND") {
+        toast.error("That handle isn't a reachable public business/creator account.");
+      } else {
+        toast.error(data.error ?? "Couldn't refresh competitor metrics.");
+      }
+    } catch {
+      toast.error("Couldn't reach the competitor insights service.");
+    } finally {
+      setRefreshingId(null);
+    }
+  };
+
   const getPlatformIcon = (platform: string) => {
     switch (platform.toLowerCase()) {
       case "instagram":
@@ -404,6 +431,8 @@ export default function CompetitorTrackerPage() {
         return <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/25">Fair</Badge>;
       case "At Risk":
         return <Badge className="bg-destructive/10 text-destructive border border-destructive/25">At Risk</Badge>;
+      case "Unrated":
+        return <Badge variant="outline" className="text-zinc-500 border-zinc-700">Unrated</Badge>;
       default:
         return <Badge variant="outline">Unknown</Badge>;
     }
@@ -722,6 +751,16 @@ export default function CompetitorTrackerPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 h-7 px-2"
+                      disabled={refreshingId === selectedCompetitor.id}
+                      onClick={() => handleRefreshCompetitor(selectedCompetitor.id)}
+                    >
+                      <RefreshCw className={cn("size-3.5 mr-1", refreshingId === selectedCompetitor.id && "animate-spin")} />
+                      Refresh
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 px-2"
                       onClick={() => handleDeleteCompetitor(selectedCompetitor.id)}
                     >
@@ -730,7 +769,9 @@ export default function CompetitorTrackerPage() {
                   </div>
                 </div>
                 <CardDescription className="text-zinc-400 mt-1">
-                  Detailed demographics, sentiment analysis, and campaign intelligence.
+                  {selectedCompetitor.lastScrapedAt
+                    ? `Live Instagram metrics · updated ${new Date(selectedCompetitor.lastScrapedAt).toLocaleString()}`
+                    : "No metrics pulled yet — click Refresh to fetch live Instagram numbers."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-4 space-y-6">
@@ -765,7 +806,7 @@ export default function CompetitorTrackerPage() {
                           </div>
                         </div>
                       ) : (
-                        <p className="text-xs text-zinc-500 italic">No activity data available</p>
+                        <p className="text-xs text-zinc-500 italic">Not tracked — follower activity isn&apos;t available via Instagram business discovery.</p>
                       )}
                     </div>
 
@@ -804,7 +845,7 @@ export default function CompetitorTrackerPage() {
                           ) : null}
                         </>
                       ) : (
-                        <p className="text-xs text-zinc-500 italic">No campaign data available</p>
+                        <p className="text-xs text-zinc-500 italic">Not tracked — ad campaigns &amp; spend aren&apos;t available via Instagram business discovery.</p>
                       )}
                     </div>
 
@@ -825,7 +866,7 @@ export default function CompetitorTrackerPage() {
                           ))}
                         </div>
                       ) : (
-                        <p className="text-xs text-zinc-500 italic">No demographic data available</p>
+                        <p className="text-xs text-zinc-500 italic">Not tracked — audience demographics aren&apos;t available via Instagram business discovery.</p>
                       )}
                     </div>
                   </TabsContent>
@@ -873,7 +914,7 @@ export default function CompetitorTrackerPage() {
                           </div>
                         </>
                       ) : (
-                        <p className="text-xs text-zinc-500 italic">No sentiment data available</p>
+                        <p className="text-xs text-zinc-500 italic">Not tracked — comment sentiment isn&apos;t available via Instagram business discovery.</p>
                       )}
                     </div>
 
@@ -902,7 +943,7 @@ export default function CompetitorTrackerPage() {
                           ))}
                         </div>
                       ) : (
-                        <p className="text-xs text-zinc-500 italic">No post data available</p>
+                        <p className="text-xs text-zinc-500 italic">Not tracked — individual post breakdowns aren&apos;t stored for competitors yet.</p>
                       )}
                     </div>
                   </TabsContent>
