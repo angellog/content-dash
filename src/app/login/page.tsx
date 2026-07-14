@@ -28,6 +28,17 @@ function getPasswordStrength(password: string): { label: string; color: string }
   return { label: "Strong", color: "text-emerald-400" };
 }
 
+// The same email can exist here (ContentDash + Content Library share one
+// Supabase project) AND on feetbit-unified (its own project) with different
+// passwords. GoTrue's bare "Invalid login credentials" gives no hint of that,
+// which repeatedly read as "deploys break login" — so name the credential
+// space explicitly instead.
+function friendlyAuthError(message: string): string {
+  return message === "Invalid login credentials"
+    ? "Invalid email or password. Note: ContentDash and the Content Library share this account; FeetBit Unified uses a separate one, so the same email can have a different password there."
+    : message;
+}
+
 function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -77,7 +88,7 @@ function LoginContent() {
         password,
       });
       if (err) {
-        setError(err.message);
+        setError(friendlyAuthError(err.message));
       } else {
         router.push(redirect);
       }
@@ -128,6 +139,9 @@ function LoginContent() {
                 ? "Create your account"
                 : "Reset your password"}
           </CardDescription>
+          <p className="text-xs text-zinc-600">
+            Same account as the Content Library. FeetBit Unified is separate.
+          </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
