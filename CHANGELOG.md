@@ -4,6 +4,18 @@ All notable changes to ContentDash are documented in this file. The format follo
 
 ---
 
+## [2.3.1] - 2026-07-15
+
+### Fixed
+
+**The recurring post-deploy "Invalid login credentials" trap**
+
+Diagnosis: the same email exists as two independent accounts — ContentDash + Content Library share one Supabase project, FeetBit Unified has its own with a separately-set password — while all three apps showed an identical "ContentDash" login screen. Every redeploy forces a fresh manual login (new deployment URL → no session cookie, no password-manager autofill), and entering the *other* app's password returns GoTrue's bare "Invalid login credentials" (confirmed in auth logs: a rejection followed by a success with the correct password seconds later — the account was never broken). Three-layer fix:
+
+- Login screen now states the credential space: "Same account as the Content Library. FeetBit Unified is separate."
+- "Invalid login credentials" is translated into an actionable message naming which apps share this account.
+- **Build-time project pinning** in `next.config.ts`: the build fails loudly if `NEXT_PUBLIC_SUPABASE_URL` is missing or points at a project other than `oeaajqcssoukezpqtbtg` — a wrong-project build (the silent failure mode that shipped a login page rejecting every real user) can no longer deploy. Escape hatch: `ALLOW_SUPABASE_PROJECT_MISMATCH=1` for intentional migrations.
+
 ## [2.3.0] - 2026-07-14
 
 ### Changed
