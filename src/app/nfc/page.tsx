@@ -46,13 +46,16 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Suspense } from "react";
+import { priceForQuantity } from "@/lib/nfc-pricing";
 
-const CARD_PRICES: Record<number, number> = {
-  1: 29,
-  3: 69,
-  5: 99,
-  10: 149,
+// Storefront select values -> the `NFCRedirectType` values the API accepts.
+const REDIRECT_TYPE_MAP: Record<string, string> = {
+  instagram: "INSTAGRAM",
+  linkinbio: "LINK_IN_BIO",
+  whatsapp: "WHATSAPP_CHAT",
+  custom: "CUSTOM_URL",
 };
+
 
 function SmartNfcCardsInner() {
   const [redirectType, setRedirectType] = useState("instagram");
@@ -177,8 +180,8 @@ function SmartNfcCardsInner() {
           cardColor,
           quantity: cardQuantity,
           cardName: businessLogoName || `NFC Card - ${cardColor}`,
-          redirectType: redirectType.toUpperCase(),
-          targetUrl,
+          redirectType: REDIRECT_TYPE_MAP[redirectType] ?? "CUSTOM_URL",
+          destinationUrl: targetUrl,
         }),
       });
 
@@ -211,7 +214,7 @@ function SmartNfcCardsInner() {
     return redirectUrl;
   };
 
-  const cardTotal = CARD_PRICES[cardQuantity] ?? (29 * cardQuantity);
+  const cardTotal = priceForQuantity(cardQuantity);
   const totalTaps = activeCards.reduce((sum, c) => sum + c.taps, 0);
 
   return (
@@ -281,17 +284,17 @@ function SmartNfcCardsInner() {
                   <div className="flex justify-between items-start z-10">
                     <div>
                       <div className="flex items-center gap-1">
-                        <Sparkles className={cn("size-5", cardColor === "brushed-silver" ? "text-indigo-600" : "text-indigo-400")} />
+                        <Sparkles className={cn("size-5", cardColor === "sterling-silver" ? "text-indigo-600" : "text-indigo-400")} />
                         <span className="text-xs font-black tracking-wider uppercase">
                           {businessLogoName || "YOUR BRAND"}
                         </span>
                       </div>
-                      <p className={cn("text-[9px] mt-1 tracking-widest uppercase", cardColor === "brushed-silver" ? "text-zinc-600" : "text-zinc-400")}>
+                      <p className={cn("text-[9px] mt-1 tracking-widest uppercase", cardColor === "sterling-silver" ? "text-zinc-600" : "text-zinc-400")}>
                         SMART CONNECTIONS
                       </p>
                     </div>
 
-                    <Wifi className={cn("size-6 animate-pulse", cardColor === "brushed-silver" ? "text-indigo-600" : "text-indigo-400")} />
+                    <Wifi className={cn("size-6 animate-pulse", cardColor === "sterling-silver" ? "text-indigo-600" : "text-indigo-400")} />
                   </div>
 
                   <div className="flex justify-between items-end z-10">
@@ -299,13 +302,13 @@ function SmartNfcCardsInner() {
                       <p className="text-sm font-semibold tracking-wide">
                         {customTitle}
                       </p>
-                      <p className={cn("text-[8px] font-mono mt-0.5", cardColor === "brushed-silver" ? "text-zinc-600" : "text-zinc-400")}>
+                      <p className={cn("text-[8px] font-mono mt-0.5", cardColor === "sterling-silver" ? "text-zinc-600" : "text-zinc-400")}>
                         Chip ID: NTAG213-C9A8D4
                       </p>
                     </div>
 
                     <div className={cn("size-14 rounded-lg p-1.5 flex items-center justify-center border", 
-                      cardColor === "brushed-silver" ? "bg-white border-zinc-300 text-zinc-950" : "bg-zinc-950 border-zinc-800 text-white"
+                      cardColor === "sterling-silver" ? "bg-white border-zinc-300 text-zinc-950" : "bg-zinc-950 border-zinc-800 text-white"
                     )}>
                       <QrCode className="size-full" />
                     </div>
@@ -586,10 +589,10 @@ function SmartNfcCardsInner() {
 
                         <button
                           type="button"
-                          onClick={() => setCardColor("brushed-silver")}
+                          onClick={() => setCardColor("sterling-silver")}
                           className={cn(
                             "w-full p-3 rounded-lg border text-left flex items-center justify-between",
-                            cardColor === "brushed-silver" 
+                            cardColor === "sterling-silver" 
                               ? "bg-zinc-800/80 border-indigo-500 text-white" 
                               : "bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700"
                           )}
@@ -599,7 +602,7 @@ function SmartNfcCardsInner() {
                             <p className="text-xxs text-zinc-500">Sleek metallic chrome look</p>
                           </div>
                           <div className="size-4 rounded-full bg-zinc-950 border border-zinc-700 flex items-center justify-center">
-                            {cardColor === "brushed-silver" && <div className="size-2 rounded-full bg-indigo-500"></div>}
+                            {cardColor === "sterling-silver" && <div className="size-2 rounded-full bg-indigo-500"></div>}
                           </div>
                         </button>
                       </div>

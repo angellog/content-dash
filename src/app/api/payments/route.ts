@@ -2,16 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { paymentPostSchema, validateBody } from "@/lib/validations/schemas";
 import { rateLimit, getRateLimitHeaders, RATE_LIMITS } from "@/lib/rate-limit";
+import { priceForQuantity, toDbColor } from "@/lib/nfc-pricing";
 
 const FLW_BASE = "https://api.flutterwave.com/v3";
-
-const CARD_PRICES: Record<string, number> = {
-  "matte-black": 29.99,
-  "pearl-white": 29.99,
-  "rose-gold": 39.99,
-  "chrome-silver": 39.99,
-  "obsidian-carbon": 49.99,
-};
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
@@ -36,8 +29,7 @@ export async function POST(req: NextRequest) {
   }
   const { cardColor, quantity = 1, cardName, redirectType, destinationUrl } = parsed.data;
 
-  const unitPrice = CARD_PRICES[cardColor] ?? 29.99;
-  const amount = unitPrice * quantity;
+  const amount = priceForQuantity(quantity);
 
   const secretKey = process.env.FLW_SECRET_KEY;
   if (!secretKey) {
@@ -72,11 +64,12 @@ export async function POST(req: NextRequest) {
         userId: user.id,
         cardSlug,
         cardName: cardName || `NFC Card - ${cardColor}`,
-        color: cardColor.replace(/-/g, "_").toUpperCase(),
+        color: toDbColor(cardColor),
         redirectType: redirectType || "CUSTOM_URL",
         destinationUrl: destinationUrl || "https://contentdash.ai",
         isActive: false,
         orderStatus: "ORDERED",
+        txRef,
         activationCode,
         isActivated: false,
         profileSlug,
@@ -109,6 +102,7 @@ export async function POST(req: NextRequest) {
         },
         meta: {
           userId: user.id,
+          txRef,
           cardColor,
           quantity,
           cardName,

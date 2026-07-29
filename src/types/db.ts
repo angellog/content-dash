@@ -3,7 +3,7 @@ export type OmniSocialStatus = "UNCONFIGURED" | "ACTIVE" | "INVALID";
 export type ConnectionType = "api_key" | "mcp_url";
 export type NFCColor = "MATTE_BLACK" | "BRUSHED_GOLD" | "STERLING_SILVER";
 export type NFCRedirectType = "INSTAGRAM" | "LINK_IN_BIO" | "CUSTOM_URL" | "WHATSAPP_CHAT";
-export type NFCOrderStatus = "ORDERED" | "PRINTED" | "SHIPPED" | "ACTIVE";
+export type NFCOrderStatus = "ORDERED" | "PAID" | "PRINTED" | "SHIPPED" | "ACTIVE";
 export type DeviceType = "IOS" | "ANDROID" | "DESKTOP" | "OTHER";
 export type Sentiment = "POSITIVE" | "NEUTRAL" | "NEGATIVE";
 export type WhatsAppStatus = "QUEUED" | "SENDING" | "PUBLISHED" | "FAILED";
@@ -47,6 +47,7 @@ export interface NFCCard {
   destinationUrl: string;
   isActive: boolean;
   orderStatus: NFCOrderStatus;
+  txRef: string | null;
   flwTransactionId: string | null;
   activationCode: string | null;
   isActivated: boolean;
