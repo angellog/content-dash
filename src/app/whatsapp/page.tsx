@@ -22,7 +22,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableHeader,
@@ -64,7 +64,6 @@ export default function WhatsAppBillboard() {
   const [isBillboardActive, setIsBillboardActive] = useState(true);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [activeTab, setActiveTab] = useState("all");
-  const [isLive, setIsLive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -94,7 +93,6 @@ export default function WhatsAppBillboard() {
           replies: (c.repliesCount as number) ?? 0,
         }));
         setCampaigns(mapped);
-        if (mapped.length > 0) setIsLive(true);
       } else {
         setError("Failed to load campaigns.");
       }
@@ -106,7 +104,10 @@ export default function WhatsAppBillboard() {
   }, []);
 
   useEffect(() => {
-    fetchCampaigns();
+    // fetchCampaigns awaits before it touches state, so this cannot cascade
+    // renders; the rule can't see past the callback boundary to prove that.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchCampaigns();
   }, [fetchCampaigns]);
 
   const totalViews = campaigns.reduce((sum, c) => sum + c.views, 0);

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Post, Platform, PLATFORM_COLORS } from "@/types/social";
+import { Post, PLATFORM_COLORS } from "@/types/social";
 import { Card, CardContent } from "@/components/ui/card";
 import { PostTypeBadge } from "@/components/social-manager/post-type-badge";
 import { cn } from "@/lib/utils";

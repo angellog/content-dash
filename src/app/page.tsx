@@ -125,7 +125,9 @@ export default function Home() {
       let followerGrowth: number | null = null;
       let followerGrowthTrend: string | null = null;
       let engagementTrend: string | null = null;
-      let totalPostsTrend: string | null = null;
+      // OmniSocial's overview endpoint returns no period-over-period delta for
+      // post volume, so this stays null and the card renders "—" (honesty rule).
+      const totalPostsTrend: string | null = null;
 
       try {
         const analyticsRes = await fetch("/api/omnisocial/analytics");
