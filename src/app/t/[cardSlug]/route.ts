@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
@@ -87,16 +88,31 @@ export async function GET(
     else if (/Macintosh|Windows|Linux/i.test(userAgent)) deviceType = "DESKTOP";
   }
 
-  supabase
-    .from("NFCTapEvent")
-    .insert({
+  // Written with the service role, not the anon key: this is the only writer of
+  // tap events, so the table needs no public INSERT policy and the counts can't
+  // be inflated by anyone posting straight at PostgREST.
+  //
+  // Awaited deliberately — a fire-and-forget insert races the response, and a
+  // serverless instance that freezes after responding drops the row silently.
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (serviceKey) {
+    const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { error: tapError } = await admin.from("NFCTapEvent").insert({
       id: crypto.randomUUID(),
       cardId: card.id,
       ipAddress,
       userAgent,
       deviceType,
-    })
-    .then(() => {});
+    });
+    if (tapError) {
+      // Never fail the redirect over analytics — the tap must still resolve.
+      console.error(`Failed to record tap for card ${card.id}:`, tapError);
+    }
+  } else {
+    console.error("SUPABASE_SERVICE_ROLE_KEY not set — tap event not recorded");
+  }
 
   if (card.profileSlug) {
     const profileUrl = new URL(`/p/${card.profileSlug}`, req.url);

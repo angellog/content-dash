@@ -4,6 +4,18 @@ All notable changes to ContentDash are documented in this file. The format follo
 
 ---
 
+## [2.4.2] - 2026-07-30
+
+### Fixed
+
+**NFC tap analytics: anyone could inflate them, and real taps were being dropped**
+
+`NFCTapEvent` carried four RLS policies forming two exact duplicate pairs — two `INSERT` policies both `WITH CHECK (true)`, and two identical owner-read `SELECT` policies. The unrestricted INSERT meant anyone holding the publishable anon key could POST arbitrary rows straight at PostgREST and inflate any card's tap count.
+
+It existed only because `/t/[cardSlug]` logged taps with the anon key. That route now writes with the service role, which bypasses RLS, so the table needs no public INSERT policy at all — `supabase/migrations/20260730_nfc_tap_event_rls_cleanup.sql` drops both, plus one of the duplicate SELECT policies.
+
+Separately, the same insert was fire-and-forget (`.insert({...}).then(() => {})`, never awaited). It raced the redirect response, and a serverless instance that froze after responding dropped the row with no trace — so an unknown share of taps were never recorded. It is now awaited, with failures logged and never allowed to break the redirect itself.
+
 ## [2.4.1] - 2026-07-30
 
 ### Fixed
