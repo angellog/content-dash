@@ -4,6 +4,29 @@ All notable changes to ContentDash are documented in this file. The format follo
 
 ---
 
+## [2.4.0] - 2026-07-30
+
+### Fixed
+
+**NFC checkout was unsellable, and the payment webhook trusted its caller**
+
+The Smart NFC Card storefront, its checkout API, and the `NFCCard` table each had a different idea of what a card is and what it costs. Found while hardening the Flutterwave webhook; all of it is one flow, so it ships as one change.
+
+- **Only one of three finishes could be ordered.** The storefront offered `matte-black` / `brushed-gold` / `brushed-silver`; `paymentPostSchema` accepted `matte-black` / `pearl-white` / `rose-gold` / `chrome-silver` / `obsidian-carbon`; the `NFCColor` DB enum has `MATTE_BLACK` / `BRUSHED_GOLD` / `STERLING_SILVER`. Gold and silver were rejected at validation (400); the schema's other four colours would have failed the insert (500). Matte black was the only path that completed. All three now agree on the DB enum's vocabulary, and the silver option's value matches its "Sterling Silver" label.
+- **The quoted price was not the charged price.** The storefront quotes quantity bundles (1/$29, 3/$69, 5/$99, 10/$149); the checkout route billed $29.99 per card per colour, so a "3 Cards ($69.00) — Save 20%" order charged $89.97. Pricing is now one colour-independent quantity table in `src/lib/nfc-pricing.ts`, shared by the storefront, the checkout route, and the webhook's amount check. `quantity` is restricted to the bundles actually quoted.
+- **The checkout discarded the customer's redirect target.** The storefront sent `targetUrl` and an unmapped `redirectType` (`LINKINBIO`, `WHATSAPP`); the API reads `destinationUrl` and a `NFCRedirectType` enum. Every paid card was created pointing at the `https://contentdash.ai` default. Both are now mapped correctly.
+
+**Payment webhook hardening**
+
+- The webhook created a brand-new `NFCCard` straight from unverified `meta` on the request body — a forged payload minted a free card. It now re-verifies the transaction against Flutterwave's `/transactions/{id}/verify`, matches it back to the card created at checkout via a stored `tx_ref`, checks currency and amount against the shared price table, and flips that row to `PAID` rather than inserting anything.
+- Idempotent: repeat deliveries of the same event are ignored once the card has left `ORDERED`.
+- Uses the service-role client (the old cookie-less `createServerClient` was operating under the anon key), and returns a non-2xx on misconfiguration so Flutterwave retries instead of silently dropping a paid order.
+
+### Database
+
+Applied to `oeaajqcssoukezpqtbtg` — `supabase/migrations/20260710_add_nfc_txref.sql`:
+`NFCCard.txRef` (+ partial unique index) and a new `PAID` label on the `NFCOrderStatus` enum, between `ORDERED` and `PRINTED`.
+
 ## [2.3.1] - 2026-07-15
 
 ### Fixed

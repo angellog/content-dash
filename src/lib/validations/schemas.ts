@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CARD_COLORS, ORDERABLE_QUANTITIES } from "@/lib/nfc-pricing";
 
 export const agentExecuteSchema = z.object({
   message: z.string().min(1),
@@ -19,8 +20,12 @@ export const agentConfigPutSchema = z.object({
 });
 
 export const paymentPostSchema = z.object({
-  cardColor: z.enum(["matte-black", "pearl-white", "rose-gold", "chrome-silver", "obsidian-carbon"]),
-  quantity: z.int().positive().max(100).optional().default(1),
+  cardColor: z.enum(CARD_COLORS),
+  // Only the quantities the storefront actually quotes a price for.
+  quantity: z
+    .union(ORDERABLE_QUANTITIES.map((q) => z.literal(q)) as [z.ZodLiteral<number>, ...z.ZodLiteral<number>[]])
+    .optional()
+    .default(1),
   cardName: z.string().min(1).max(100).optional(),
   redirectType: z.enum(["INSTAGRAM", "LINK_IN_BIO", "CUSTOM_URL", "WHATSAPP_CHAT"]).optional(),
   destinationUrl: z.string().url().optional(),

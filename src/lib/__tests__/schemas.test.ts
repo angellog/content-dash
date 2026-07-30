@@ -87,14 +87,22 @@ describe("paymentPostSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects quantity over 100", () => {
-    const result = paymentPostSchema.safeParse({ cardColor: "matte-black", quantity: 101 });
-    expect(result.success).toBe(false);
+  it("accepts every colour the storefront offers", () => {
+    for (const cardColor of ["matte-black", "brushed-gold", "sterling-silver"]) {
+      expect(paymentPostSchema.safeParse({ cardColor }).success).toBe(true);
+    }
   });
 
-  it("rejects negative quantity", () => {
-    const result = paymentPostSchema.safeParse({ cardColor: "matte-black", quantity: -1 });
-    expect(result.success).toBe(false);
+  it("accepts the quoted quantity bundles", () => {
+    for (const quantity of [1, 3, 5, 10]) {
+      expect(paymentPostSchema.safeParse({ cardColor: "matte-black", quantity }).success).toBe(true);
+    }
+  });
+
+  it("rejects quantities we don't quote a price for", () => {
+    for (const quantity of [2, 4, 101, -1]) {
+      expect(paymentPostSchema.safeParse({ cardColor: "matte-black", quantity }).success).toBe(false);
+    }
   });
 });
 
