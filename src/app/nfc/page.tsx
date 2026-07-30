@@ -48,6 +48,16 @@ import { toast } from "sonner";
 import { Suspense } from "react";
 import { priceForQuantity } from "@/lib/nfc-pricing";
 
+// The API validates cardSlug as lowercase alphanumeric with interior hyphens.
+function slugify(name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  // Always suffix: slugs must be unique per card, and a name alone isn't.
+  return `${base || "card"}-${Date.now().toString(36)}`;
+}
+
 // Storefront select values -> the `NFCRedirectType` values the API accepts.
 const REDIRECT_TYPE_MAP: Record<string, string> = {
   instagram: "INSTAGRAM",
@@ -132,18 +142,27 @@ function SmartNfcCardsInner() {
         ? `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(whatsappMessage)}`
         : redirectUrl;
 
+    const cardName = customTitle || "My NFC Card";
+
     try {
       const res = await fetch("/api/nfc/cards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          cardName: customTitle || "My NFC Card",
-          redirectType: redirectType.toUpperCase(),
-          targetUrl,
-          isActive: true,
+          cardSlug: slugify(cardName),
+          cardName,
+          redirectType: REDIRECT_TYPE_MAP[redirectType] ?? "CUSTOM_URL",
+          destinationUrl: targetUrl,
         }),
       });
-      if (res.ok) {
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        const message = detail?.error || "Failed to save NFC configuration.";
+        setError(message);
+        toast.error(message);
+        return;
+      }
+      {
         const saved = await res.json();
         setActiveCards((prev) => [
           ...prev,

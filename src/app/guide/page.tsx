@@ -10,7 +10,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+;
 import {
   LogIn,
   Wifi,
@@ -23,8 +23,6 @@ import {
   CheckCircle2,
   ArrowRight,
   User,
-  Image,
-  Link2,
   QrCode,
   MessageCircle,
   Swords,

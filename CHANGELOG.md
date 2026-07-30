@@ -4,6 +4,28 @@ All notable changes to ContentDash are documented in this file. The format follo
 
 ---
 
+## [2.4.1] - 2026-07-30
+
+### Fixed
+
+**The linter was reporting 31,173 problems and was therefore being ignored**
+
+`eslint.config.mjs` ignored `.next/**` root-anchored. Agent worktrees under `.claude/worktrees/` are full checkouts of this same repo and carry their own build output, so the nested `.claude/worktrees/*/.next/` was linted as source: 31,173 problems (1,541 errors), essentially all of it minified vendor code. The 49 real findings were unfindable inside it. Ignores are now `**/`-prefixed, and `.claude/worktrees/**` is excluded outright.
+
+With the noise gone, the real errors were fixable:
+
+- `src/app/page.tsx` — `totalPostsTrend` declared `let` and never reassigned. It is permanently `null` by design (OmniSocial returns no period-over-period delta for post volume, so the card renders "—"); now `const`, with the reason recorded.
+- `src/app/whatsapp/page.tsx` — dead `isLive` state: written on every successful fetch, never read. Removed. The `react-hooks/set-state-in-effect` error on the mount fetch is a false positive (the callback awaits before touching state) and is now suppressed at that line with the reasoning, rather than left as a standing error.
+- `src/lib/__tests__/nfc-schemas.test.ts` — `require("crypto")` inside a `describe` block replaced with a top-level import.
+
+Also: a `no-unused-vars` convention (`^_` for args, vars, caught errors, and array destructuring) so route handlers that take `req` purely to match Next.js's shape can say so; unused params renamed accordingly; and ~20 dead imports removed across the app.
+
+Net: **31,173 → 17 problems, 0 errors.**
+
+**NFC card configuration could never be saved**
+
+`handleConfigSave` POSTed a body `/api/nfc/cards` always rejected — no `cardSlug` (required), `targetUrl` where the schema reads `destinationUrl`, and `redirectType.toUpperCase()` producing `LINKINBIO`/`WHATSAPP`/`CUSTOM` against an enum of `INSTAGRAM | LINK_IN_BIO | WHATSAPP_CHAT | CUSTOM_URL`. Every save 400'd, and because the handler only had an `if (res.ok)` branch, the failure was silent — the form looked like it did nothing. Now sends a valid slug, the right field name, and a mapped enum value, and surfaces the server's error in a toast. (Same three-way mismatch as the checkout path fixed in 2.4.0; this was the other caller.)
+
 ## [2.4.0] - 2026-07-30
 
 ### Fixed

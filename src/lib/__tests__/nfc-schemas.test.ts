@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
+import { timingSafeEqual } from "crypto";
 import { nfcActivateSchema, nfcProfileUpsertSchema, validateBody } from "../validations/schemas";
 
 describe("nfcActivateSchema", () => {
@@ -199,8 +200,6 @@ describe("validateBody helper", () => {
 });
 
 describe("Payment webhook HMAC validation", () => {
-  const { timingSafeEqual } = require("crypto");
-
   it("timingSafeEqual matches identical strings", () => {
     const a = Buffer.from("test-hash-123");
     const b = Buffer.from("test-hash-123");

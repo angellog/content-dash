@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { nfcCardPostSchema, nfcCardPatchSchema, validateBody } from "@/lib/validations/schemas";
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },

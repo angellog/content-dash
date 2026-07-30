@@ -9,9 +9,8 @@ import {
   Post,
   PostStatus,
   PLATFORMS,
-  PLATFORM_COLORS,
 } from "@/types/social";
-import { PLATFORM_CONFIG, CONNECTED_PLATFORMS } from "@/lib/omnisocial";
+;
 import { useSocialMediaStore } from "@/hooks/useSocialMediaStore";
 import { useLibraryQueue } from "@/lib/api/library-queries";
 import { PlatformIconBar } from "@/components/social-manager/platform-icon-bar";

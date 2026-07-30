@@ -5,9 +5,7 @@ import {
   Rss,
   Flame,
   BookOpen,
-  Share2,
   Sparkles,
-  Plus,
   Calendar,
   Clock,
   ExternalLink,
@@ -29,7 +27,7 @@ import {
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -38,7 +36,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select"
-import { ScrollArea } from "@/components/ui/scroll-area"
+
 import {
   Dialog,
   DialogContent,

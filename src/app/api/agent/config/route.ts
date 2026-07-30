@@ -14,7 +14,7 @@ function isNewKeyValue(value: string | undefined): value is string {
   return !!value && !value.startsWith("****");
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -140,7 +140,7 @@ export async function PUT(req: NextRequest) {
   });
 }
 
-export async function DELETE(req: NextRequest) {
+export async function DELETE(_req: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
 
