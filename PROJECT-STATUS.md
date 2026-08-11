@@ -10,9 +10,9 @@
 
 | Repo | Purpose | Production URL | Version |
 |---|---|---|---|
-| **content-dash** | Original standalone dashboard (Social Manager, Analytics, Competitors, NFC, WhatsApp, OpenClaw agent, Content Library *bridge*) | https://content-dash-rho.vercel.app | 2.3.1 |
+| **content-dash** | Original standalone dashboard (Social Manager, Analytics, Competitors, NFC, WhatsApp, OpenClaw agent, Content Library *bridge*) | https://content-dash-rho.vercel.app | 2.4.2 |
 | **feetbit-content-library** | Content approval + Instagram publishing app (4K Stogram import, CLIP search, Graph API/Composio publish, cron scheduler). App lives in `dashboard/` subdir | https://dashboard-alpha-gold-92.vercel.app | 0.3.1 |
-| **feetbit-unified** | The "real merge" product — content-dash's shell + specialized agents + Workspace. Still calls feetbit-content-library over the HTTP bridge (native absorption pending) | https://feetbit-unified.vercel.app | 0.3.1 |
+| **feetbit-unified** | The "real merge" product — content-dash's shell + specialized agents + Workspace. Still calls feetbit-content-library over the HTTP bridge (native absorption pending) | https://feetbit-unified.vercel.app | 0.4.0 |
 
 GitHub: `angellog/content-dash`, `angellog/feetbit-content-library`, `angellog/feetbit-unified`.
 All three are Vercel Git-connected: **merging to `main` auto-deploys**. feetbit-content-library's
@@ -92,6 +92,31 @@ happens via the library's own scheduler cron (GitHub Actions `*/10min` + daily V
 |---|---|
 | oeaajq… | `posts.status` check gains `'published'`; `org_id` (nullable) + backfill on posts/post_media/target_accounts/post_queue |
 | ujzx… | `AgentLog.personaId`; `Organization` + `OrganizationMember` + seed org + `orgId` backfill; `Workspace` table + one-active-per-user partial unique index |
+
+Added 2026-07-30/31 (v2.4.x in content-dash, v0.4.0 in feetbit-unified):
+
+| Project | Migration |
+|---|---|
+| oeaajq… | `NFCCard.txRef` + partial unique index; `'PAID'` added to `NFCOrderStatus` between ORDERED and PRINTED; `NFCTapEvent` RLS cleanup — dropped two always-true INSERT policies and one duplicate SELECT policy |
+| ujzx… | `NFCCard.txRef` + partial unique index; `'PAID'` added to `NFCOrderStatus`; same `NFCTapEvent` RLS cleanup |
+
+Both tap-RLS cleanups were applied **after** the matching code deployed. `/t/[cardSlug]` now writes
+tap events with the service role; dropping the anon INSERT policy while the old anon-key route was
+still live would have silently stopped tap logging.
+
+**Two things worth knowing before you next touch a database here:**
+
+1. **A restoring project reads as empty, not as an error.** During the 2026-07-31 restore, `ujzx…`
+   answered queries with zero tables and zero auth users for several minutes before its real schema
+   appeared — which briefly looked like catastrophic data loss and led to a wrong conclusion that
+   the migrations in the row above had never been applied. They had. Confirm `status` is
+   `ACTIVE_HEALTHY` (not `COMING_UP`) before concluding anything is missing.
+2. **No repo can rebuild its database from zero.** Every file in `supabase/migrations/` is
+   incremental; the earliest (`20260604_add_indexes_and_enums.sql`) opens with
+   `ALTER TABLE "AgentLog"` and notes it "replaces the former Prisma schema management". The
+   `CREATE TABLE` statements left with Prisma. That is a genuine gap if a database is ever lost —
+   the fix is to generate a base schema by introspecting a healthy project, not to hand-write one
+   against a live project that already has its schema.
 
 **Not applied** (staged in library `schema.sql`/CLAUDE.md, intentionally): `inbox_items` table —
 engagement isn't live until Meta review + env vars. New `post_queue` rows get null `org_id` until
