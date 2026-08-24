@@ -3,6 +3,8 @@
 > Written 2026-07-15 as a durable snapshot of the full three-repo system: what exists,
 > what shipped, what's dormant awaiting external setup, and what's deliberately deferred.
 > Companion to each repo's own `CLAUDE.md` (architecture) and `CHANGELOG.md` (history).
+>
+> **Last updated 2026-08-24** — security-hardening pass on `ujzx…` (§5), open to-do in §10.
 
 ---
 
@@ -118,6 +120,23 @@ still live would have silently stopped tap logging.
    the fix is to generate a base schema by introspecting a healthy project, not to hand-write one
    against a live project that already has its schema.
 
+Added 2026-08-24 (security-hardening pass, `ujzx…` only — `oeaajq…` already had all of this):
+
+| Project | Migration |
+|---|---|
+| ujzx… | `handle_new_user` — pinned `SET search_path TO 'public'`, revoked `EXECUTE` from `anon`/`authenticated`/`PUBLIC`, leaving `postgres` + `service_role` (matches `oeaajq…` exactly) |
+| ujzx… | RLS enabled on `Workspace`, `Organization`, `OrganizationMember` — all three were reachable with the publishable anon key. `Workspace` gets owner-scoped SELECT/INSERT/UPDATE/DELETE on `userId = auth.uid()`; `Organization`/`OrganizationMember` get owner-scoped SELECT, writes service-role only |
+| ujzx… | Dropped `meridian_leads` + `meridian_payments` — an unrelated project's tables that had been created in this database by mistake. `meridian_payments` was empty; all 9 `meridian_leads` rows were synthetic smoke tests (`.dev`/`.test` addresses, 2026-07-11/12). No real data lost |
+
+The `Workspace` policies are **defence in depth, not a behaviour change**: `/api/workspaces`,
+`/api/workspaces/[id]` and `/api/agent/execute` all reach the table through the user-session SSR
+client and already filter `.eq("userId", user.id)` in code. Verified after applying — as the owner's
+uid the table returned its row, as another uid and as `anon` it returned zero, and `/api/workspaces`
+still answers `401` (auth guard) rather than `500`.
+
+`Organization`'s policy deliberately avoids being referenced by `OrganizationMember`'s policy, so the
+two cannot recurse through each other.
+
 **Not applied** (staged in library `schema.sql`/CLAUDE.md, intentionally): `inbox_items` table —
 engagement isn't live until Meta review + env vars. New `post_queue` rows get null `org_id` until
 Phase 2 wires inserts — acceptable while unenforced.
@@ -132,8 +151,10 @@ Phase 2 wires inserts — acceptable while unenforced.
 
 ## 7. Deliberately deferred
 
-- **Multi-tenancy Phase 2** — bridge protocol carrying verified `orgId`, RLS on content tables,
-  org/invite/membership UI, per-org billing (Flutterwave). Wait for a real second tenant.
+- **Multi-tenancy Phase 2** — bridge protocol carrying verified `orgId`, RLS on the *library's*
+  content tables, org/invite/membership UI, per-org billing (Flutterwave). Wait for a real second
+  tenant. (RLS on feetbit-unified's own `Workspace`/`Organization`/`OrganizationMember` is no longer
+  part of this — it was done 2026-08-24, see §5.)
 - **Native absorption** — folding the library's schema + publish pipeline into feetbit-unified's
   own project (removing the HTTP bridge hop). Tracked in feetbit-unified's CLAUDE.md.
 - **OmniSocial gaps** — follower-growth & time-series analytics blocked on their API.
@@ -160,3 +181,30 @@ Phase 2 wires inserts — acceptable while unenforced.
   server-side.
 - DB changes to the **shared** project need user review before applying; feetbit-unified's own
   project may be migrated directly when additive (per established practice this session).
+
+## 10. Open to-do (as of 2026-08-24)
+
+Health at time of writing: both Supabase projects `ACTIVE_HEALTHY`; all three repos on `main`, clean
+and in sync with origin; content-dash 2.4.2, library 0.3.1, feetbit-unified 0.4.0 all deployed.
+**Zero ERROR-level security advisors on either database.**
+
+**Owner-only (cannot be done from a session — needs dashboard access):**
+
+| # | Item | Where |
+|---|---|---|
+| 1 | Enable leaked-password protection (HaveIBeenPwned check). The last remaining advisor **on both projects**. Auth setting, not SQL. | Supabase → Authentication → Policies, both projects |
+| 2 | feetbit-unified local dev still has stale content-dash `SUPABASE_SERVICE_ROLE_KEY` / `DATABASE_URL` / `DIRECT_URL` in `.env` | Supabase dashboard → `ujzx…` |
+| 3 | Dormant features awaiting external setup — see §6 (Meta token, Meta App Review) | Meta dashboard |
+
+**Engineering, ready to pick up:**
+
+| # | Item | Why it matters |
+|---|---|---|
+| 4 | **Generate a base schema migration by introspecting a healthy project.** No repo can rebuild its database from zero (see §5). This is the only item here that is a real recovery risk. | Blocks disaster recovery |
+| 5 | `gbp_queue` on `oeaajq…` has RLS enabled with no policies — locked to service role. Confirm that is intended, or give it policies. | INFO-level advisor |
+| 6 | Port the `handle_new_user` hardening pattern into `supabase/migrations/` as tracked SQL. Both projects now match, but the fix was applied directly and is not in any repo's migration files. | Drift between DB and repo |
+
+**Deliberately not doing** — see §7. Phase-2 multi-tenancy still waits for a real second tenant.
+
+**Housekeeping:** `supabase/.temp/` and `.vercel/` show as dirty in content-dash and the library
+respectively; both are local CLI scratch dirs, not worth committing — candidates for `.gitignore`.
