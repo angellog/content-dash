@@ -1,4 +1,4 @@
-import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import type { Metadata } from "next";
 
 type LinkData = {
@@ -34,17 +34,35 @@ const LINK_ICONS: Record<string, { icon: string; color: string }> = {
   custom: { icon: "🔗", color: "text-zinc-400" },
 };
 
+// Public profile pages are rendered server-side and read with the service
+// role, never the publishable key. The anon path depended on NFCCard's
+// "Public read cards by cardSlug" policy, which — RLS being row-level rather
+// than column-level — exposed activationCode, txRef and flwTransactionId to
+// anyone holding that key. NFCProfile's and NFCLink's own public policies
+// subquery NFCCard, so they would have gone dark the moment that policy was
+// dropped; reading here as the service role is what makes dropping it safe.
+//
+// Only the columns each query names are ever sent to the browser, and both
+// callers still filter on isActivated, so an unactivated card stays private.
+function publicReader() {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) {
+    throw new Error(
+      "SUPABASE_SERVICE_ROLE_KEY not set — public profile pages cannot be rendered"
+    );
+  }
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ profileSlug: string }>;
 }): Promise<Metadata> {
   const { profileSlug } = await params;
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll() { return []; }, setAll() {} } }
-  );
+  const supabase = publicReader();
 
   const { data: card } = await supabase
     .from("NFCCard")
@@ -83,11 +101,7 @@ export default async function PublicProfilePage({
 }) {
   const { profileSlug } = await params;
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll() { return []; }, setAll() {} } }
-  );
+  const supabase = publicReader();
 
   const { data: card } = await supabase
     .from("NFCCard")

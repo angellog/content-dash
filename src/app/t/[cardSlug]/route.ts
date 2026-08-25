@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -46,18 +45,32 @@ export async function GET(
 ) {
   const { cardSlug } = await params;
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return []; },
-        setAll() {},
-      },
-    }
-  );
+  // Resolved with the service role rather than the anon key. The anon path
+  // relied on a "Public read cards by cardSlug" RLS policy, and because RLS is
+  // row-level and not column-level, that policy handed anyone holding the
+  // publishable key every column of any slugged card — activationCode, txRef
+  // and flwTransactionId included, none of which this route needs. Reading as
+  // the service role is what lets that policy be dropped.
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) {
+    // Fail loudly and visibly. Card resolution now depends on this key, and
+    // rendering "Card Not Found" would blame the card for a server misconfig.
+    console.error("SUPABASE_SERVICE_ROLE_KEY not set — cannot resolve NFC card taps");
+    return new Response(
+      styledHtml(
+        "Temporarily Unavailable",
+        "This card can't be resolved right now. Please try again in a moment.",
+        QUESTION_ICON
+      ),
+      { status: 503, headers: { "Content-Type": "text/html" } }
+    );
+  }
 
-  const { data: card } = await supabase
+  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data: card } = await admin
     .from("NFCCard")
     .select("id, destinationUrl, isActive, isActivated, profileSlug")
     .eq("cardSlug", cardSlug)
@@ -88,30 +101,22 @@ export async function GET(
     else if (/Macintosh|Windows|Linux/i.test(userAgent)) deviceType = "DESKTOP";
   }
 
-  // Written with the service role, not the anon key: this is the only writer of
-  // tap events, so the table needs no public INSERT policy and the counts can't
-  // be inflated by anyone posting straight at PostgREST.
+  // Reuses the same service-role client as the lookup above: this is the only
+  // writer of tap events, so the table needs no public INSERT policy and the
+  // counts can't be inflated by anyone posting straight at PostgREST.
   //
   // Awaited deliberately — a fire-and-forget insert races the response, and a
   // serverless instance that freezes after responding drops the row silently.
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (serviceKey) {
-    const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    const { error: tapError } = await admin.from("NFCTapEvent").insert({
-      id: crypto.randomUUID(),
-      cardId: card.id,
-      ipAddress,
-      userAgent,
-      deviceType,
-    });
-    if (tapError) {
-      // Never fail the redirect over analytics — the tap must still resolve.
-      console.error(`Failed to record tap for card ${card.id}:`, tapError);
-    }
-  } else {
-    console.error("SUPABASE_SERVICE_ROLE_KEY not set — tap event not recorded");
+  const { error: tapError } = await admin.from("NFCTapEvent").insert({
+    id: crypto.randomUUID(),
+    cardId: card.id,
+    ipAddress,
+    userAgent,
+    deviceType,
+  });
+  if (tapError) {
+    // Never fail the redirect over analytics — the tap must still resolve.
+    console.error(`Failed to record tap for card ${card.id}:`, tapError);
   }
 
   if (card.profileSlug) {
