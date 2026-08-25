@@ -4,6 +4,47 @@ All notable changes to ContentDash are documented in this file. The format follo
 
 ---
 
+## [2.4.3] - 2026-08-24
+
+### Security
+
+**Anyone with the publishable key could read every NFC card's activation code**
+
+`NFCCard` carried two policies granting `SELECT` to anon — `"Public read cards
+by cardSlug"` and the broader `"Public read activated cards by slug"`, which
+despite its name never checked `isActivated`. RLS is row-level, not
+column-level, so neither could limit which columns came back. Any card with a
+slug handed over `activationCode`, `txRef`, `flwTransactionId` and the owner's
+`userId`.
+
+`activationCode` is `UNIQUE` and is what claims an unactivated card, so this was
+enough to let someone claim a card they had not bought.
+
+Confirmed rather than inferred: a probe row was inserted into the (empty) table,
+read back as `anon` — all four columns returned — and deleted.
+
+The policies were load-bearing, which is why the fix is a code change first.
+`/t/[cardSlug]` and `/p/[profileSlug]` both read `NFCCard` with the publishable
+key, so the policies could not simply be dropped:
+
+- `/t/[cardSlug]` now resolves the card with the service-role client it already
+  built for the tap insert, and reuses that one client for both. If
+  `SUPABASE_SERVICE_ROLE_KEY` is missing it now fails loudly with a 503 instead
+  of rendering "Card Not Found", which would have blamed the card for a server
+  misconfiguration.
+- `/p/[profileSlug]` reads through a new `publicReader()` helper on the service
+  role. This page also had to move: `NFCProfile` and `NFCLink` have public
+  policies that *subquery* `NFCCard`, so they would have gone dark for anon the
+  moment the card policy was dropped. Both callers still filter on
+  `isActivated`, so unactivated cards stay private.
+
+`supabase/migrations/20260824_drop_nfc_card_public_read.sql` drops both policies
+and is marked **do not apply until this ships** — dropping them against the old
+code turns every tap into "Card Not Found". Same ordering trap as the
+`NFCTapEvent` cleanup in 2.4.2.
+
+No cards exist in either database yet, so nothing was actually exposed.
+
 ## [2.4.2] - 2026-07-30
 
 ### Fixed
