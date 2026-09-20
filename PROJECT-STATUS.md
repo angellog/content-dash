@@ -4,7 +4,7 @@
 > what shipped, what's dormant awaiting external setup, and what's deliberately deferred.
 > Companion to each repo's own `CLAUDE.md` (architecture) and `CHANGELOG.md` (history).
 >
-> **Last updated 2026-08-24** — security-hardening pass on `ujzx…` (§5), open to-do in §10.
+> **Last updated 2026-09-21** — status re-verified end to end; open to-do in §10.
 
 ---
 
@@ -182,49 +182,44 @@ Phase 2 wires inserts — acceptable while unenforced.
 - DB changes to the **shared** project need user review before applying; feetbit-unified's own
   project may be migrated directly when additive (per established practice this session).
 
-## 10. Open to-do (as of 2026-08-24)
+## 10. Open to-do (as of 2026-09-21)
 
-Health at time of writing: both Supabase projects `ACTIVE_HEALTHY`; all three repos on `main`, clean
-and in sync with origin; content-dash 2.4.2, library 0.3.1, feetbit-unified 0.4.0 all deployed.
-**Zero ERROR-level security advisors on either database.**
+Health at this revision: both Supabase projects `ACTIVE_HEALTHY`; all three sites answering 200;
+content-dash 2.4.3, feetbit-unified 0.4.2, library 0.6.0 all deployed. **Zero ERROR-level security
+advisors on either database.** Nothing has shipped since 2026-08-25 — the FeetBit repos have been
+parked while other work took priority, which is a choice, not a problem.
 
-**Owner-only (cannot be done from a session — needs dashboard access):**
+### Closed since the last revision
 
-| # | Item | Where |
+| # | Item | Outcome |
 |---|---|---|
-| 1 | Enable leaked-password protection (HaveIBeenPwned check). The last remaining advisor **on both projects**. Auth setting, not SQL. | Supabase → Authentication → Policies, both projects |
-| 2 | feetbit-unified local dev still has stale content-dash `SUPABASE_SERVICE_ROLE_KEY` / `DATABASE_URL` / `DIRECT_URL` in `.env` | Supabase dashboard → `ujzx…` |
-| 3 | Dormant features awaiting external setup — see §6 (Meta token, Meta App Review) | Meta dashboard |
+| 7 | `NFCCard` leaked every column to anon | **Done 2026-08-25.** Both public policies dropped on `oeaajq…`, one on `ujzx…`, after the service-role code deployed. Verified live: anon reads 0 rows, a real card still resolves `302`. Re-verified 2026-09-21 — still closed. |
+| 6 | `handle_new_user` untracked | **Done.** `ujzx…` 2026-08-24, `oeaajq…` 2026-09-21. Both databases and both repos now agree. |
 
-**Engineering, ready to pick up:**
+### Still open — owner only (needs dashboard access)
+
+| # | Item | Notes |
+|---|---|---|
+| 1 | **Overdue Supabase invoices on the `Angellog` org** | **Newly blocking.** Creating any new project fails with `PaymentRequiredException`. This blocks item 8 below. |
+| 2 | Enable leaked-password protection | Still off on **both** projects. Authentication → Policies. Only affects new passwords, so nobody is locked out. |
+| 3 | feetbit-unified local `.env` has stale content-dash `SUPABASE_SERVICE_ROLE_KEY` / `DATABASE_URL` / `DIRECT_URL` | Local dev only; production is fine. |
+| 4 | Meta token + App Review | Keeps competitor insights and the inbox dormant — see §6. |
+
+### Still open — engineering
 
 | # | Item | Why it matters |
 |---|---|---|
-| 4 | **Generate a base schema migration by introspecting a healthy project.** No repo can rebuild its database from zero (see §5). This is the only item here that is a real recovery risk. | Blocks disaster recovery |
-| 5 | `gbp_queue` on `oeaajq…` has RLS enabled with no policies — locked to service role. Confirm that is intended, or give it policies. | INFO-level advisor |
-| 6 | Port the `handle_new_user` hardening pattern into `supabase/migrations/` as tracked SQL. Both projects now match, but the fix was applied directly and is not in any repo's migration files. | Drift between DB and repo |
-| 7 | **`NFCCard` leaks every column to anon on BOTH projects.** `"Public read cards by cardSlug"` is `USING ("cardSlug" IS NOT NULL)`, and RLS is row-level, not column-level — so anon gets `activationCode`, `txRef`, `flwTransactionId` and `userId` for any slugged card, not just the five columns `/t/[cardSlug]` needs. Verified with a probe row, since both card tables are empty. `oeaajq…` also carries a second, broader `"Public read activated cards by slug"` policy that despite its name does not check `isActivated`. **Not urgent — zero cards exist, so nothing is exposed today — but must be fixed before the first card sells.** The policy is load-bearing: `/t/[cardSlug]` reads the card with the anon key, so it cannot simply be dropped. Fix is to move that lookup to the service-role client the route already builds, then drop the public policies — deploying the code *before* the migration, per the trap in §5. | Credential exposure once cards exist — **fix in flight**, see below |
-
-**Item 7 is a two-part change, and the order matters.** The code fix is open as
-content-dash PR #9 and feetbit-unified PR #8; each ships its own
-`20260824_drop_nfc_card_public_read.sql` carrying a DO-NOT-APPLY-UNTIL-DEPLOYED header.
-
-    merge → auto-deploy → verify a real tap resolves → then apply the migration
-
-Applying the migration first turns every tap redirect into "Card Not Found" and every public
-profile into "Profile Not Found". That is the same trap §5 records from the `NFCTapEvent`
-cleanup, which is why the policy drop is deliberately not bundled with the code.
-
-Worth knowing for anyone reviewing: `/p/[profileSlug]` had to move to the service role too,
-which is not obvious from the leak itself. `NFCProfile` and `NFCLink` carry their own public
-policies, but those *subquery* `NFCCard` — and a policy expression applies the referenced
-table's RLS — so they stop returning rows to anon the moment the card policy is dropped.
-
-Once both land and the migrations run, `feetbit-unified/supabase/base_schema.sql` needs
-regenerating: it reproduces the doomed policy faithfully, because it is a snapshot of what the
-database *is*, not what it should be.
+| 8 | **Meridian writes into feetbit-unified's database.** `meridian-citizenship-group` points `SUPABASE_URL` at `ujzx…` and owns no migrations, so its two tables were created by hand in the wrong project — which is why dropping them on 2026-08-25 did not stick. They reappeared on their own. **Not a security problem:** that app uses the service-role key only, RLS is on with zero policies, so anon and authenticated read nothing, and both tables are empty. It is coupling and reproducibility. A tracked base schema now exists (meridian PR #1); the move itself waits on item 1. | Two unrelated products share one database, and Meridian is *launching* |
+| 9 | **No base schema for content-dash or the library.** feetbit-unified has one; these two still cannot be rebuilt from zero, because every migration is incremental and the `CREATE TABLE`s left with Prisma. `oeaajq…` has since grown to 18 tables. | The one real disaster-recovery risk |
+| 5 | `gbp_queue` on `oeaajq…` has RLS enabled with no policies — locked to service role. Confirm intended, or give it policies. | INFO advisor |
+| 10 | Library PR #18 (TikTok reconciliation) has been green and `MERGEABLE` since 2026-08-25 and was never merged. Its Preview builds were failing on env scoping, now fixed. | A finished change sitting unshipped |
 
 **Deliberately not doing** — see §7. Phase-2 multi-tenancy still waits for a real second tenant.
 
-**Housekeeping:** `supabase/.temp/` and `.vercel/` show as dirty in content-dash and the library
-respectively; both are local CLI scratch dirs, not worth committing — candidates for `.gitignore`.
+**Housekeeping:** `supabase/.temp/` and `.vercel/` show dirty in content-dash and the library —
+local CLI scratch, candidates for `.gitignore`. Disk is at 11 GiB free, down from 17 GiB in August.
+
+**A note on dates:** everything produced on 2026-08-25 is stamped `20260824` / "2026-08-24" — an
+off-by-one made during that session. The migration filenames are deliberately left alone, because
+Supabase tracks applied migrations by name and renaming an applied one is riskier than a label
+that is one day early.
