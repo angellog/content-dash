@@ -31,7 +31,7 @@ const source = sourceFiles(path.join(ROOT, "src"))
 // Buckets the code uses that do not exist on oeaajq… yet. Each entry is a
 // known, tracked defect (PROJECT-STATUS.md §10) — remove it once the bucket is
 // created, and this test will then insist the snapshot is regenerated.
-const KNOWN_MISSING_BUCKETS = new Set(["media"]);
+const KNOWN_MISSING_BUCKETS = new Set<string>([]);
 
 describe("supabase/base_schema.sql", () => {
   it("is a snapshot, not a migration, and says so", () => {
