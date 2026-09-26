@@ -4,6 +4,24 @@ All notable changes to ContentDash are documented in this file. The format follo
 
 ---
 
+## [2.4.6] - 2026-09-27
+
+### Security
+
+**Anyone with the publishable key could overwrite carousel slides**
+
+`carousel-exports` carried two policies letting `anon` INSERT and UPDATE any
+object. The bucket is public, so a replaced file would be served from the
+same URL that Instagram posts and `post_queue` rows point at.
+`supabase/migrations/20260927_scope_carousel_exports_writes.sql` drops both,
+leaving writes to the service role. Nothing needs anon writes: the 45 objects
+(2026-07-05 → 09-08) were all written without an owner and never updated, no
+repo or skill names the bucket, and the carousel skills now hand images off
+through Composio's S3 upload. Public reads of existing slides are unaffected.
+**Apply after 2.4.5 ships** — it touches the shared database.
+
+---
+
 ## [2.4.5] - 2026-09-26
 
 ### Fixed
