@@ -33,7 +33,9 @@ AI-Powered Content Management Dashboard v2.0.0 built with Next.js 16 (App Router
 ```
 content-dash/
 ├── supabase/
-│   └── migrations/          # SQL migrations (indexes, enums, constraints)
+│   ├── base_schema.sql      # SNAPSHOT of the whole oeaajq… DB — rebuild-from-zero (shared with feetbit-content-library)
+│   └── migrations/          # Incremental SQL migrations
+├── scripts/db/              # base-schema.sh generate|verify (+ generator and diff SQL)
 ├── vitest.config.ts         # Test runner configuration
 └── src/
     ├── app/                 # Next.js App Router structure
@@ -98,4 +100,7 @@ All API routes use Zod schemas defined in `src/lib/validations/schemas.ts`. The 
 - **Responsive Layout:** Placed in columns collapsing systematically for smaller mobile display screens.
 
 ## Testing
-Run `npm test` for the Vitest suite. Tests cover encryption roundtrips, Zod schema validation, rate limiting, and LLM message formatting for all three providers.
+Run `npm test` for the Vitest suite. Tests cover encryption roundtrips, Zod schema validation, rate limiting, LLM message formatting for all three providers, and static guard-rails on `supabase/base_schema.sql` (every table/bucket the code touches must be in the snapshot).
+
+## Database snapshot
+`supabase/base_schema.sql` rebuilds the shared `oeaajq…` database from zero — run it alone on an empty project, never followed by `migrations/`. After any schema change: write the migration, apply it, then `scripts/db/base-schema.sh generate` and `scripts/db/base-schema.sh verify` (builds the file into a scratch schema inside BEGIN…ROLLBACK and diffs every object class against live; must print all zeros), and copy the file to `feetbit-content-library/supabase/base_schema.sql`.

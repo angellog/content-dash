@@ -4,7 +4,7 @@
 > what shipped, what's dormant awaiting external setup, and what's deliberately deferred.
 > Companion to each repo's own `CLAUDE.md` (architecture) and `CHANGELOG.md` (history).
 >
-> **Last updated 2026-09-21** — status re-verified end to end; open to-do in §10.
+> **Last updated 2026-09-26** — base schema snapshot shipped (§10 #9); open to-do in §10.
 
 ---
 
@@ -113,12 +113,13 @@ still live would have silently stopped tap logging.
    appeared — which briefly looked like catastrophic data loss and led to a wrong conclusion that
    the migrations in the row above had never been applied. They had. Confirm `status` is
    `ACTIVE_HEALTHY` (not `COMING_UP`) before concluding anything is missing.
-2. **No repo can rebuild its database from zero.** Every file in `supabase/migrations/` is
-   incremental; the earliest (`20260604_add_indexes_and_enums.sql`) opens with
-   `ALTER TABLE "AgentLog"` and notes it "replaces the former Prisma schema management". The
-   `CREATE TABLE` statements left with Prisma. That is a genuine gap if a database is ever lost —
-   the fix is to generate a base schema by introspecting a healthy project, not to hand-write one
-   against a live project that already has its schema.
+2. **Rebuilding from zero means `supabase/base_schema.sql`, never `migrations/`.** Every
+   migration file is incremental (the `CREATE TABLE`s left with Prisma), and 20 of the 25
+   migrations `oeaajq…` records were applied from the dashboard and exist in no repo. Both
+   databases now have an introspected snapshot: `ujzx…` in feetbit-unified (2026-08-24), `oeaajq…`
+   in content-dash **and** the library (identical copies, 2026-09-26). After any schema change on
+   `oeaajq…`: `scripts/db/base-schema.sh generate`, then `verify` (scratch-schema build inside
+   BEGIN…ROLLBACK + full catalog diff; must print all zeros).
 
 Added 2026-08-24 (security-hardening pass, `ujzx…` only — `oeaajq…` already had all of this):
 
@@ -182,7 +183,7 @@ Phase 2 wires inserts — acceptable while unenforced.
 - DB changes to the **shared** project need user review before applying; feetbit-unified's own
   project may be migrated directly when additive (per established practice this session).
 
-## 10. Open to-do (as of 2026-09-21)
+## 10. Open to-do (as of 2026-09-26)
 
 Health at this revision: both Supabase projects `ACTIVE_HEALTHY`; all three sites answering 200;
 content-dash 2.4.3, feetbit-unified 0.4.2, library 0.6.0 all deployed. **Zero ERROR-level security
@@ -195,6 +196,7 @@ parked while other work took priority, which is a choice, not a problem.
 |---|---|---|
 | 7 | `NFCCard` leaked every column to anon | **Done 2026-08-25.** Both public policies dropped on `oeaajq…`, one on `ujzx…`, after the service-role code deployed. Verified live: anon reads 0 rows, a real card still resolves `302`. Re-verified 2026-09-21 — still closed. |
 | 6 | `handle_new_user` untracked | **Done.** `ujzx…` 2026-08-24, `oeaajq…` 2026-09-21. Both databases and both repos now agree. |
+| 9 | No base schema for content-dash or the library | **Done 2026-09-26 (in review).** `supabase/base_schema.sql` in content-dash (PR #11, stacked on #10) and an identical copy in the library (PR #20). Generated from the live catalog, not hand-written. Verified two ways: (a) coverage — 18 tables, 220 columns, 9 enums, 49 constraints, 48 indexes, 39 policies, 3 functions + ACLs, 2 triggers, 3 storage policies, 6 buckets, 0 mismatches; (b) the file built top to bottom into an empty scratch schema under `search_path = pg_catalog` inside BEGIN…ROLLBACK. Mutation test caught 3/3 injected drifts. Repeatable with `scripts/db/base-schema.sh verify`. |
 
 ### Still open — owner only (needs dashboard access)
 
@@ -204,6 +206,7 @@ parked while other work took priority, which is a choice, not a problem.
 | 2 | Enable leaked-password protection | Still off on **both** projects. Authentication → Policies. Only affects new passwords, so nobody is locked out. |
 | 3 | feetbit-unified local `.env` has stale content-dash `SUPABASE_SERVICE_ROLE_KEY` / `DATABASE_URL` / `DIRECT_URL` | Local dev only; production is fine. |
 | 4 | Meta token + App Review | Keeps competitor insights and the inbox dormant — see §6. |
+| 11 | **Apply `20260926_fix_match_post_media_search_path.sql` to `oeaajq…`** | Library image-similarity search (`/api/similar`) has errored on **every call since 2026-07-28**: the untracked `pin_search_path_on_functions` migration pinned `match_post_media` to `'public'`, where pgvector's `<=>` cannot be found. One `ALTER FUNCTION … SET search_path TO 'public', 'extensions'`, additive, idempotent, proven in a rolled-back transaction. Shared DB → needs your OK (§9). Until applied, the snapshot differs from live on exactly this line, by design. |
 
 ### Still open — engineering
 
@@ -212,12 +215,21 @@ parked while other work took priority, which is a choice, not a problem.
 | 8 | **Meridian writes into feetbit-unified's database.** `meridian-citizenship-group` points `SUPABASE_URL` at `ujzx…` and owns no migrations, so its two tables were created by hand in the wrong project — which is why dropping them on 2026-08-25 did not stick. They reappeared on their own. **Not a security problem:** that app uses the service-role key only, RLS is on with zero policies, so anon and authenticated read nothing, and both tables are empty. It is coupling and reproducibility. A tracked base schema now exists (meridian PR #1); the move itself waits on item 1. | Two unrelated products share one database, and Meridian is *launching* |
 | 9 | **No base schema for content-dash or the library.** feetbit-unified has one; these two still cannot be rebuilt from zero, because every migration is incremental and the `CREATE TABLE`s left with Prisma. `oeaajq…` has since grown to 18 tables. | The one real disaster-recovery risk |
 | 5 | `gbp_queue` on `oeaajq…` has RLS enabled with no policies — locked to service role. Confirm intended, or give it policies. | INFO advisor |
+| 12 | **OmniSocial media upload can only fail.** `/api/omnisocial/upload` (content-dash + feetbit-unified) writes to a storage bucket named `media` that exists on neither project, and there are no storage policies for authenticated uploads. `ujzx…` has **no buckets at all**, so feetbit-unified's `nfc-avatars` uploads fail too. | Found by the snapshot test (it allowlists `media` as a known defect until fixed) |
+| 13 | `carousel-exports` bucket lets **anon INSERT and UPDATE** objects (policies `carousel_exports_anon_write`/`_update`). Anyone with the publishable key can overwrite files served from a public URL. Confirm the carousel tool needs it; otherwise scope to service role. | Security, low blast radius |
+| 15 | **Port `scripts/db/base-schema.sh` to feetbit-unified and re-verify its snapshot.** Its `base_schema.sql` (2026-08-24) is hand-organised and not schema-qualified, so the new verifier can't run on it as-is. Table set matches live (13 + Meridian's 2, see #8), but rough counts differ — policies 39 in file vs 38 live, non-constraint indexes 4 vs 8 — so it has probably drifted. Regenerate with the generator (`PROJECT_REF=ujzxpssjvdoitpdkrpmr`, excluding `meridian_*`) and verify. | Standing rule: all three repos |
+| 14 | **Postiz as a publisher adapter** — plan drafted 2026-09-26, not implemented. Waiting on: instance URL, platform order, Meta app mode. | Cheaper publishing + carousels/GBP/YouTube/X |
 | 10 | Library PR #18 (TikTok reconciliation) has been green and `MERGEABLE` since 2026-08-25 and was never merged. Its Preview builds were failing on env scoping, now fixed. | A finished change sitting unshipped |
 
 **Deliberately not doing** — see §7. Phase-2 multi-tenancy still waits for a real second tenant.
 
 **Housekeeping:** `supabase/.temp/` and `.vercel/` show dirty in content-dash and the library —
 local CLI scratch, candidates for `.gitignore`. Disk is at 11 GiB free, down from 17 GiB in August.
+content-dash's `package-lock.json` is out of sync with `package.json` (`npm ci` refuses:
+`@emnapi/wasi-threads` 1.2.2 vs 1.2.3) — `npm install` works; regenerate the lock in its own PR.
+content-dash's local `.env` `DATABASE_URL`/`DIRECT_URL` are stale (pooler moved `aws-0` → `aws-1`,
+and the password no longer authenticates) — local dev only; `scripts/db/base-schema.sh` avoids the
+password entirely by going through the CLI's Management API login.
 
 **A note on dates:** everything produced on 2026-08-25 is stamped `20260824` / "2026-08-24" — an
 off-by-one made during that session. The migration filenames are deliberately left alone, because

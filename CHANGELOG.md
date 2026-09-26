@@ -4,6 +4,50 @@ All notable changes to ContentDash are documented in this file. The format follo
 
 ---
 
+## [2.4.4] - 2026-09-26
+
+### Added
+
+**The shared database can now be rebuilt from zero**
+
+`supabase/base_schema.sql` is a snapshot of the whole `oeaajq…` database —
+18 tables, 9 enums, 49 constraints, 48 indexes, 39 RLS policies, 3 functions,
+2 triggers, 6 storage buckets and their policies — generated from the live
+catalog rather than written by hand. Before this, nothing could rebuild it: the
+`CREATE TABLE`s left with Prisma, and 20 of the 25 migrations the database
+records were applied from the dashboard and exist in no repo.
+
+It is proven, not assumed. `scripts/db/base-schema.sh verify` builds the file
+into an empty scratch schema under `search_path = pg_catalog` inside
+`BEGIN…ROLLBACK`, then diffs every object class — columns, defaults,
+constraints, indexes, policies, grants, function bodies and ACLs, triggers —
+against live. Result: 0 mismatches everywhere. A mutation run (one changed
+default, one dropped policy, one dropped index) was caught 3/3, so the zeros
+mean something. `generate` reproduces the committed file byte-for-byte.
+
+A new Vitest suite (`base-schema.test.ts`) fails the build if the code starts
+using a table or storage bucket the snapshot lacks.
+
+### Fixed
+
+**Library image-similarity search has failed on every call since 2026-07-28**
+
+An untracked migration pinned `match_post_media` to `search_path = 'public'`,
+but pgvector's `<=>` operator lives in `extensions`. Every call errored with
+`operator does not exist: extensions.vector <=> extensions.vector`. Found
+because the snapshot of the broken definition would not build.
+`migrations/20260926_fix_match_post_media_search_path.sql` adds `extensions`
+to the pinned path; verified in a rolled-back transaction to return matches.
+**Not yet applied** — it touches the shared database, so it waits for review.
+
+### Known issues (tracked in PROJECT-STATUS.md §10)
+
+- `/api/omnisocial/upload` writes to a storage bucket named `media` that does
+  not exist on either Supabase project, so it can only return 500.
+- `carousel-exports` lets `anon` INSERT and UPDATE objects.
+
+---
+
 ## [2.4.3] - 2026-08-24
 
 ### Security
