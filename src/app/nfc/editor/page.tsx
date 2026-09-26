@@ -274,6 +274,11 @@ export default function SmartProfileEditor() {
           const uploadData = await uploadRes.json();
           finalAvatarUrl = uploadData.url;
           setAvatarUrl(finalAvatarUrl);
+        } else {
+          // Don't save and report success with the avatar silently dropped.
+          const err = await uploadRes.json().catch(() => null);
+          toast.error(`Avatar upload failed: ${err?.error ?? uploadRes.statusText}`);
+          return;
         }
       }
 
