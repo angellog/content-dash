@@ -4,6 +4,60 @@ All notable changes to ContentDash are documented in this file. The format follo
 
 ---
 
+## [2.4.5] - 2026-09-26
+
+### Fixed
+
+**Media and NFC avatar uploads could only fail**
+
+`/api/omnisocial/upload` wrote to a storage bucket named `media` that did not
+exist. `/api/nfc/avatar` wrote to `nfc-avatars`, which existed but had no
+storage policies and had never held a single object. Both routes use the
+user-session SSR client (publishable key + the caller's JWT), so storage RLS
+applies and every upload was refused: the OmniSocial route answered `500`, and
+the NFC editor saved the profile anyway and said "Smart Profile saved!" with
+the avatar silently dropped.
+
+`supabase/migrations/20260926_media_bucket_and_upload_policies.sql` — applied
+to the shared `oeaajq…` project on 2026-09-26 after review, and to
+feetbit-unified's `ujzx…` — creates `media` and adds owner-scoped policies:
+
+- `media`: `INSERT` only, under `uploads/<auth.uid()>/`.
+- `nfc-avatars`: `INSERT`/`SELECT`/`UPDATE` under `<auth.uid()>/` — the route
+  upserts, which the storage API runs as `INSERT … ON CONFLICT DO UPDATE`.
+
+Both buckets stay public, because OmniSocial and `/p/[profileSlug]` fetch the
+returned URLs anonymously. There is no broad `SELECT` policy (public URLs don't
+need one; it would only allow listing). Each bucket has a MIME allowlist — no
+SVG or HTML, since they are served from the project's own domain — and a size
+cap (50 MB / 5 MB).
+
+The routes now check type and size themselves and answer `415`/`413` rather
+than a storage error dressed as a `500`, take the extension from the validated
+MIME type instead of the client's filename, and pass `contentType` through.
+`/api/nfc/avatar` rejects a malformed `cardId`. The NFC editor stops and shows
+the upload error instead of saving without the avatar.
+
+Verified: a rolled-back dry run on `oeaajq…` with RLS probes (own folder
+allowed; another user's folder, a wrong prefix and anon all denied; another
+user sees and updates 0 rows), then live — with the publishable key alone,
+listing either bucket returns `[]`, uploading is `403`, and existing
+`carousel-exports` URLs still serve `200`. The same migration on `ujzx…` took
+real uploads through feetbit-unified's deployed routes (`201`, public URL
+`200 image/png`, avatar upsert `200` twice, HTML refused by the bucket).
+
+### Changed
+
+**The base schema snapshot includes the new bucket**
+
+`supabase/base_schema.sql` regenerated and re-verified against live
+(0 mismatches; 7 buckets, 7 storage policies), with the same copy in
+feetbit-content-library. `base-schema.test.ts` no longer allowlists `media`
+as a known-missing bucket — the set is empty, so any new bucket the code uses
+must now exist in the snapshot.
+
+---
+
 ## [2.4.4] - 2026-09-26
 
 ### Added

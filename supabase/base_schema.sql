@@ -57,6 +57,9 @@
 -- 49 constraints, 48 indexes, 39 policies, 3 functions (+ACLs), 2 triggers,
 -- 3 storage policies, 6 buckets. 0 mismatches. A mutation test (one changed
 -- default, one dropped policy, one dropped index) was caught 3/3.
+-- Regenerated + re-verified 2026-09-26 after
+-- 20260926_media_bucket_and_upload_policies.sql: now 7 storage policies,
+-- 7 buckets (`media` added; `nfc-avatars` gained limits).
 --
 -- ONE DELIBERATE DIFFERENCE FROM LIVE (until the fix migration is applied)
 --
@@ -679,7 +682,8 @@ CREATE POLICY video_series_service ON public.video_series AS PERMISSIVE FOR ALL 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES ('ai-agent-media', 'ai-agent-media', true, NULL, '{image/jpeg,image/png,image/webp}'::text[]) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES ('carousel-exports', 'carousel-exports', true, NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES ('kickshot', 'kickshot', true, NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES ('nfc-avatars', 'nfc-avatars', true, NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES ('media', 'media', true, 52428800, '{image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime}'::text[]) ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES ('nfc-avatars', 'nfc-avatars', true, 5242880, '{image/jpeg,image/png,image/webp,image/gif}'::text[]) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES ('post-media', 'post-media', true, NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES ('reels', 'reels', true, 104857600, '{video/mp4}'::text[]) ON CONFLICT (id) DO NOTHING;
 CREATE POLICY carousel_exports_anon_update ON storage.objects AS PERMISSIVE FOR UPDATE TO anon
@@ -689,3 +693,12 @@ CREATE POLICY carousel_exports_anon_write ON storage.objects AS PERMISSIVE FOR I
   WITH CHECK ((bucket_id = 'carousel-exports'::text));
 CREATE POLICY carousel_exports_public_read ON storage.objects AS PERMISSIVE FOR SELECT TO anon, authenticated
   USING ((bucket_id = 'carousel-exports'::text));
+CREATE POLICY media_owner_insert ON storage.objects AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK (((bucket_id = 'media'::text) AND ((storage.foldername(name))[1] = 'uploads'::text) AND ((storage.foldername(name))[2] = (( SELECT auth.uid() AS uid))::text)));
+CREATE POLICY nfc_avatars_owner_insert ON storage.objects AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK (((bucket_id = 'nfc-avatars'::text) AND ((storage.foldername(name))[1] = (( SELECT auth.uid() AS uid))::text)));
+CREATE POLICY nfc_avatars_owner_select ON storage.objects AS PERMISSIVE FOR SELECT TO authenticated
+  USING (((bucket_id = 'nfc-avatars'::text) AND ((storage.foldername(name))[1] = (( SELECT auth.uid() AS uid))::text)));
+CREATE POLICY nfc_avatars_owner_update ON storage.objects AS PERMISSIVE FOR UPDATE TO authenticated
+  USING (((bucket_id = 'nfc-avatars'::text) AND ((storage.foldername(name))[1] = (( SELECT auth.uid() AS uid))::text)))
+  WITH CHECK (((bucket_id = 'nfc-avatars'::text) AND ((storage.foldername(name))[1] = (( SELECT auth.uid() AS uid))::text)));
